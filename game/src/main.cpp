@@ -29,7 +29,6 @@ HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
 
     float t = (vx * wy - vy * wx) / det;
     float u = (dx * wy - dy * wx) / det;
-
     if (t > 0 && u >= 0 && u <= 1) {
         result.hit = true;
         result.distance = t * std::sqrt(dx*dx + dy*dy);
@@ -56,7 +55,6 @@ int main(int argc, char* argv[]) {
     player.x = 1280.0f;
     player.y = 1280.0f;
 
-    // --- Инициализация SDL3 ---
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "Ошибка инициализации SDL: " << SDL_GetError() << std::endl;
         return 1;
@@ -142,9 +140,23 @@ int main(int argc, char* argv[]) {
                 int wallTop = (WINDOW_HEIGHT - wallHeight) / 2;
                 int wallBottom = wallTop + wallHeight;
 
-                // Рисуем стены красным для наглядности
+                SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+                if (wallTop > 0) {
+                    SDL_RenderLine(renderer, x, 0, x, wallTop);
+                }
+
+                SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
+                if (wallBottom < WINDOW_HEIGHT) {
+                    SDL_RenderLine(renderer, x, wallBottom, x, WINDOW_HEIGHT);
+                }
+
+                // Рисуем стену
                 SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
                 SDL_RenderLine(renderer, x, wallTop, x, wallBottom);
+            } else {
+
+                SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+                SDL_RenderLine(renderer, x, 0, x, WINDOW_HEIGHT);
             }
         }
 
@@ -165,14 +177,14 @@ int main(int argc, char* argv[]) {
                     closestDist = hit.distance;
                 }
             }
-            std::cout << "Игрок: (" << player.x << ", " << player.y << ")  Угол: " << player.angle
-                      << "  Расстояние до стены: " << closestDist << std::endl;
+            std::cout << "Player: (" << player.x << ", " << player.y << ")  Angel: " << player.angle
+                      << "  Wall ->: " << closestDist << std::endl;
         }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(10);
     }
-    
+
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
