@@ -100,12 +100,29 @@ int main(int argc, char* argv[]) {
         }
 
         float moveSpeed = player.speed * deltaTime * 30;
-        if (keyboard[SDL_SCANCODE_W]) player.moveForward();
-        if (keyboard[SDL_SCANCODE_S]) player.moveBackward();
-        if (keyboard[SDL_SCANCODE_A]) player.strafeLeft();
-        if (keyboard[SDL_SCANCODE_D]) player.strafeRight();
-
         float turnSpeed = 2.0f * deltaTime;
+
+        if (keyboard[SDL_SCANCODE_W]) {
+            float dx = cos(player.angle) * moveSpeed;
+            float dy = sin(player.angle) * moveSpeed;
+            player.moveWithSliding(dx, dy, lines, vertices);
+        }
+        if (keyboard[SDL_SCANCODE_S]) {
+            float dx = -cos(player.angle) * moveSpeed;
+            float dy = -sin(player.angle) * moveSpeed;
+            player.moveWithSliding(dx, dy, lines, vertices);
+        }
+        if (keyboard[SDL_SCANCODE_A]) {
+            float dx = sin(player.angle) * moveSpeed;
+            float dy = -cos(player.angle) * moveSpeed;
+            player.moveWithSliding(dx, dy, lines, vertices);
+        }
+        if (keyboard[SDL_SCANCODE_D]) {
+            float dx = -sin(player.angle) * moveSpeed;
+            float dy = cos(player.angle) * moveSpeed;
+            player.moveWithSliding(dx, dy, lines, vertices);
+        }
+
         if (keyboard[SDL_SCANCODE_LEFT]) player.turnLeft(turnSpeed);
         if (keyboard[SDL_SCANCODE_RIGHT]) player.turnRight(turnSpeed);
 
@@ -150,11 +167,9 @@ int main(int argc, char* argv[]) {
                     SDL_RenderLine(renderer, x, wallBottom, x, WINDOW_HEIGHT);
                 }
 
-                // Рисуем стену
                 SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
                 SDL_RenderLine(renderer, x, wallTop, x, wallBottom);
             } else {
-
                 SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
                 SDL_RenderLine(renderer, x, 0, x, WINDOW_HEIGHT);
             }
@@ -177,8 +192,8 @@ int main(int argc, char* argv[]) {
                     closestDist = hit.distance;
                 }
             }
-            std::cout << "Player: (" << player.x << ", " << player.y << ")  Angel: " << player.angle
-                      << "  Wall ->: " << closestDist << std::endl;
+            std::cout << "Player: (" << player.x << ", " << player.y << ")  Angle: " << player.angle
+                      << "  Wall dist: " << closestDist << std::endl;
         }
 
         SDL_RenderPresent(renderer);
