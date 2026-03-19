@@ -3,6 +3,7 @@
 #include "game/DoomMap.h"
 #include "game/WadLoader.h"
 
+// Функции объявлены в drawing_maps.cpp
 bool drawMapFromTextFile(const std::string& filename);
 bool drawMapFromWad(const std::string& wadFilename, const std::string& mapName);
 

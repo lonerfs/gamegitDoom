@@ -13,12 +13,20 @@ set(SOURCES
         src/DoomMap.cpp
         src/main.cpp
         src/WadLoader.cpp
+        src/drawing_maps.cpp
+)
+
+set(TOOL_SOURCES
+        tools/map_converter.cpp
 )
 
 include_directories(include)
 
 add_executable(game ${SOURCES})
 target_link_libraries(game PRIVATE SDL3::SDL3)
+
+add_executable(map_converter ${TOOL_SOURCES})
+target_link_libraries(map_converter PRIVATE)
 
 # Копируем SDL3.dll
 add_custom_command(TARGET game POST_BUILD
@@ -32,4 +40,17 @@ add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/freedoom1.wad
         $<TARGET_FILE_DIR:game>
+)
+
+# Создаем папку для карт
+add_custom_command(TARGET game POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:game>/maps
+)
+
+# Копируем пример карты (если есть)
+add_custom_command(TARGET game POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/maps/myfirstmap.txt
+        $<TARGET_FILE_DIR:game>/maps/ 2>nul || echo "No map file to copy"
 )
