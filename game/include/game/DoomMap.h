@@ -17,8 +17,8 @@ struct Linedef {
     uint16_t flags;
     uint16_t type;
     uint16_t sectorTag;
-    uint16_t rightSidedef;   // 0xFFFF если нет
-    uint16_t leftSidedef;    // 0xFFFF если нет
+    uint16_t rightSidedef;
+    uint16_t leftSidedef;
 };
 
 struct Sidedef {
@@ -51,6 +51,7 @@ struct Thing {
 class DoomMap {
 public:
     bool loadFromWad(const WadLoader& wad, const std::string& mapName);
+    bool loadFromTextFile(const std::string& filename);
 
     const std::vector<Vertex>& getVertices() const { return vertices; }
     const std::vector<Linedef>& getLinedefs() const { return linedefs; }

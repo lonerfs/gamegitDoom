@@ -40,7 +40,6 @@ bool WadLoader::load(const std::string& filename) {
 
 std::vector<char> WadLoader::getLumpData(const std::string& name) const {
     for (const auto& lump : lumps) {
-        // Сравниваем первые name.size() символов
         if (strncmp(lump.name, name.c_str(), name.size()) == 0) {
             if (name.size() == 8 || lump.name[name.size()] == '\0') {
                 return getLumpData(&lump - lumps.data());
