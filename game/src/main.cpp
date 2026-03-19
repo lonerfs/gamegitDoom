@@ -49,7 +49,7 @@ int main() {
         std::cerr << "Invalid choice. Only option 1 is available.\n";
         return 1;
     }
-    
+
     WadLoader wad;
     if (!wad.load("freedoom1.wad")) {
         std::cerr << "Failed to load freedoom1.wad\n";
