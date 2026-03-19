@@ -10,18 +10,14 @@ find_package(SDL3 REQUIRED CONFIG)
 
 # ------ Наши исходники ------
 set(SOURCES
-        src/DoomMap.cpp
         src/main.cpp
         src/WadLoader.cpp
-        src/main.cpp
-        src/main.cpp
-        src/main.cpp
+        src/DoomMap.cpp
 )
 
 include_directories(include)
 
-add_executable(game ${SOURCES}
-        src/main.cpp)
+add_executable(game ${SOURCES})
 target_link_libraries(game PRIVATE SDL3::SDL3)
 
 # Копируем SDL3.dll
