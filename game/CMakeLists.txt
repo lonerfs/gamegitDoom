@@ -10,9 +10,9 @@ find_package(SDL3 REQUIRED CONFIG)
 
 # ------ Наши исходники ------
 set(SOURCES
-        src/DoomMap.cpp
         src/main.cpp
         src/WadLoader.cpp
+        src/DoomMap.cpp
 )
 
 include_directories(include)
