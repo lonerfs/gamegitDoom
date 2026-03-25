@@ -15,10 +15,10 @@ find_package(SDL3_ttf REQUIRED CONFIG)
 
 # ------ Основная игра ------
 set(SOURCES
-        src/DoomMap.cpp
         src/main.cpp
         src/WadLoader.cpp
         src/drawing_maps.cpp
+        src/DoomMap.cpp
 )
 
 include_directories(include)
