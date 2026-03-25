@@ -1,4 +1,3 @@
-#include <SDL3/SDL.h>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -7,6 +6,7 @@
 #include "game/WadLoader.h"
 #include "game/DoomMap.h"
 #include "game/Player.h"
+#include "SDL3/SDL.h"
 
 struct HitResult {
     bool hit;
@@ -38,7 +38,7 @@ HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
     return result;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     WadLoader wad;
     if (!wad.load("freedoom1.wad")) {
         std::cerr << "Не удалось загрузить WAD файл" << std::endl;

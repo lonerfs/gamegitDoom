@@ -2,6 +2,8 @@
 #include "game/WadLoader.h"
 #include <iostream>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 
 bool DoomMap::loadFromWad(const WadLoader& wad, const std::string& mapName) {
     int mapIndex = -1;
@@ -19,7 +21,6 @@ bool DoomMap::loadFromWad(const WadLoader& wad, const std::string& mapName) {
         return false;
     }
 
-    // Отладка: выводим первые 20 лумпов после маркера карты
     std::cout << "Lumps after map " << mapName << ":" << std::endl;
     for (int i = mapIndex + 1; i < lumps.size(); ++i) {
         std::string nameStr(lumps[i].name, strnlen(lumps[i].name, 8));
@@ -80,6 +81,93 @@ bool DoomMap::loadFromWad(const WadLoader& wad, const std::string& mapName) {
               << sidedefs.size() << " sidedefs, "
               << sectors.size() << " sectors, "
               << things.size() << " things" << std::endl;
+
+    return true;
+}
+
+bool DoomMap::loadFromTextFile(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file) {
+        std::cerr << "Cannot open map file: " << filename << std::endl;
+        return false;
+    }
+
+    vertices.clear();
+    linedefs.clear();
+    things.clear();
+    sidedefs.clear();
+    sectors.clear();
+
+    std::string line;
+    std::string section;
+    int lineNum = 0;
+    int vertexCount = 0;
+    int linedefCount = 0;
+
+    std::cout << "Loading map from text file: " << filename << std::endl;
+
+    while (std::getline(file, line)) {
+        lineNum++;
+
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) continue;
+
+        if (line[start] == '#') continue;
+
+        if (line[start] == '[') {
+            size_t end = line.find(']', start);
+            if (end != std::string::npos) {
+                section = line.substr(start + 1, end - start - 1);
+                std::cout << "  Section: [" << section << "]" << std::endl;
+            }
+            continue;
+        }
+
+        std::istringstream iss(line);
+
+        if (section == "VERTICES") {
+            int x, y;
+            if (iss >> x >> y) {
+                vertices.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y)});
+                vertexCount++;
+            } else {
+                std::cerr << "  Error parsing VERTICES at line " << lineNum << ": " << line << std::endl;
+            }
+        }
+        else if (section == "LINEDEFS") {
+            int start, end;
+            if (iss >> start >> end) {
+                linedefs.push_back({
+                    static_cast<uint16_t>(start),
+                    static_cast<uint16_t>(end),
+                    0, 0, 0, 0, 0xFFFF
+                });
+                linedefCount++;
+            } else {
+                std::cerr << "  Error parsing LINEDEFS at line " << lineNum << ": " << line << std::endl;
+            }
+        }
+        else if (section == "THINGS") {
+            int x, y, type;
+            if (iss >> x >> y >> type) {
+                things.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y), 0, static_cast<int16_t>(type), 0});
+            } else {
+                std::cerr << "  Error parsing THINGS at line " << lineNum << ": " << line << std::endl;
+            }
+        }
+    }
+
+    std::cout << "Loaded map from " << filename << ":\n"
+              << "  Vertices: " << vertexCount << "\n"
+              << "  Linedefs: " << linedefCount << "\n"
+              << "  Things: " << things.size() << std::endl;
+
+    if (vertices.empty()) {
+        std::cerr << "Warning: No vertices loaded!" << std::endl;
+    }
+    if (linedefs.empty()) {
+        std::cerr << "Warning: No linedefs loaded!" << std::endl;
+    }
 
     return true;
 }
