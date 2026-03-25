@@ -1,4 +1,3 @@
-#include <SDL3/SDL.h>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -38,7 +37,7 @@ HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
     return result;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     WadLoader wad;
     if (!wad.load("freedoom1.wad")) {
         std::cerr << "Не удалось загрузить WAD файл" << std::endl;

@@ -1,0 +1,46 @@
+# Моя первая карта для Doom
+# Комментарии начинаются с #
+
+[VERTICES]
+# x    y
+0     0
+1024  0
+1024  1024
+0     1024
+512   512
+512   768
+768   768
+768   512
+
+[LINEDEFS]
+# start end flags type tag rightSidedef leftSidedef
+# flags: 1 = блокирует, 4 = двухсторонняя
+0 1 1 0 0 0 65535
+1 2 1 0 0 0 65535
+2 3 1 0 0 0 65535
+3 0 1 0 0 0 65535
+4 5 1 0 0 0 65535
+5 6 1 0 0 0 65535
+6 7 1 0 0 0 65535
+7 4 1 0 0 0 65535
+
+[SIDEDEFS]
+# xOffset yOffset upperTex lowerTex middleTex sector
+0 0 "-" "-" "STONE2" 0
+0 0 "-" "-" "STONE2" 0
+0 0 "-" "-" "STONE2" 0
+0 0 "-" "-" "STONE2" 0
+0 0 "-" "-" "DOOR3" 0
+0 0 "-" "-" "DOOR3" 0
+0 0 "-" "-" "DOOR3" 0
+0 0 "-" "-" "DOOR3" 0
+
+[SECTORS]
+# floorHeight ceilingHeight floorTex ceilingTex lightLevel special tag
+0 128 "FLOOR4_8" "CEIL3_5" 160 0 0
+
+[THINGS]
+# x y angle type flags
+# type 1 = игрок старт
+256 256 0 1 7
+768 768 90 3003 7  # медикит
