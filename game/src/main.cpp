@@ -6,6 +6,7 @@
 #include "game/WadLoader.h"
 #include "game/DoomMap.h"
 #include "game/Player.h"
+#include "SDL3/SDL.h"
 
 struct HitResult {
     bool hit;
