@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <fstream>
+#include <sstream>
+#include <cstring>
+#include <SDL3/SDL.h>
 #include "game/WadLoader.h"
 #include "game/DoomMap.h"
 #include "game/Player.h"
@@ -38,21 +42,43 @@ HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
 }
 
 int main() {
-    WadLoader wad;
-    if (!wad.load("freedoom1.wad")) {
-        std::cerr << "Не удалось загрузить WAD файл" << std::endl;
+    DoomMap map;
+    if (!map.loadFromTextFile("level3.txt")) {
+        std::cerr << "Не удалось загрузить карту из level3.txt" << std::endl;
         return 1;
     }
 
-    DoomMap map;
-    if (!map.loadFromWad(wad, "E1M1")) {
-        std::cerr << "Не удалось загрузить карту E1M1" << std::endl;
+    const auto& vertices = map.getVertices();
+    const auto& lines = map.getLinedefs();
+
+    if (vertices.empty() || lines.empty()) {
+        std::cerr << "Карта не содержит вершин или линий!" << std::endl;
         return 1;
     }
+
+    std::cout << "Загружена карта: " << vertices.size() << " вершин, " << lines.size() << " линий" << std::endl;
+
+    int minX = vertices[0].x, maxX = vertices[0].x;
+    int minY = vertices[0].y, maxY = vertices[0].y;
+    for (const auto& v : vertices) {
+        minX = std::min(minX, (int)v.x);
+        maxX = std::max(maxX, (int)v.x);
+        minY = std::min(minY, (int)v.y);
+        maxY = std::max(maxY, (int)v.y);
+    }
+
+    float centerX = (minX + maxX) / 2.0f;
+    float centerY = (minY + maxY) / 2.0f;
 
     Player player;
-    player.x = 1280.0f;
-    player.y = 1280.0f;
+    player.x = centerX;
+    player.y = centerY;
+    player.angle = 0.0f;
+    player.speed = 150.0f;
+
+    std::cout << "Стартовая позиция: (" << player.x << ", " << player.y << ")" << std::endl;
+    std::cout << "Границы карты: X[" << minX << "," << maxX << "] Y[" << minY << "," << maxY << "]" << std::endl;
+    std::cout << "Управление: WASD - движение, стрелки - поворот" << std::endl;
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "Ошибка инициализации SDL: " << SDL_GetError() << std::endl;
@@ -61,7 +87,7 @@ int main() {
 
     const int WINDOW_WIDTH = 1280;
     const int WINDOW_HEIGHT = 960;
-    SDL_Window* window = SDL_CreateWindow("Doom Clone - Raycasting", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL);
+    SDL_Window* window = SDL_CreateWindow("Doom Clone - Your Map", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL);
     if (!window) {
         std::cerr << "Ошибка создания окна: " << SDL_GetError() << std::endl;
         SDL_Quit();
@@ -76,9 +102,6 @@ int main() {
         return 1;
     }
 
-    const auto& lines = map.getLinedefs();
-    const auto& vertices = map.getVertices();
-
     const float FOV = 90.0f * M_PI / 180.0f;
 
     bool running = true;
@@ -89,6 +112,7 @@ int main() {
         Uint64 currentTime = SDL_GetTicks();
         float deltaTime = (currentTime - lastTime) / 1000.0f;
         lastTime = currentTime;
+        if (deltaTime > 0.033f) deltaTime = 0.033f;
 
         const bool* keyboard = SDL_GetKeyboardState(nullptr);
 
@@ -98,29 +122,31 @@ int main() {
             }
         }
 
-        float moveSpeed = player.speed * deltaTime * 30;
+        float moveSpeed = player.speed * deltaTime;
         float turnSpeed = 2.0f * deltaTime;
 
+        float dx = 0, dy = 0;
+
         if (keyboard[SDL_SCANCODE_W]) {
-            float dx = cos(player.angle) * moveSpeed;
-            float dy = sin(player.angle) * moveSpeed;
-            player.moveWithSliding(dx, dy, lines, vertices);
+            dx += cos(player.angle) * moveSpeed;
+            dy += sin(player.angle) * moveSpeed;
         }
         if (keyboard[SDL_SCANCODE_S]) {
-            float dx = -cos(player.angle) * moveSpeed;
-            float dy = -sin(player.angle) * moveSpeed;
-            player.moveWithSliding(dx, dy, lines, vertices);
+            dx -= cos(player.angle) * moveSpeed;
+            dy -= sin(player.angle) * moveSpeed;
         }
         if (keyboard[SDL_SCANCODE_A]) {
-            float dx = sin(player.angle) * moveSpeed;
-            float dy = -cos(player.angle) * moveSpeed;
-            player.moveWithSliding(dx, dy, lines, vertices);
+            dx += sin(player.angle) * moveSpeed;
+            dy -= cos(player.angle) * moveSpeed;
         }
         if (keyboard[SDL_SCANCODE_D]) {
-            float dx = -sin(player.angle) * moveSpeed;
-            float dy = cos(player.angle) * moveSpeed;
-            player.moveWithSliding(dx, dy, lines, vertices);
+            dx -= sin(player.angle) * moveSpeed;
+            dy += cos(player.angle) * moveSpeed;
         }
+
+        // Временное отключение коллизий для теста
+        player.x += dx;
+        player.y += dy;
 
         if (keyboard[SDL_SCANCODE_LEFT]) player.turnLeft(turnSpeed);
         if (keyboard[SDL_SCANCODE_RIGHT]) player.turnRight(turnSpeed);
@@ -130,18 +156,20 @@ int main() {
 
         for (int x = 0; x < WINDOW_WIDTH; x++) {
             float rayAngle = player.angle + (x - WINDOW_WIDTH / 2) * FOV / WINDOW_WIDTH;
-            float dx = cos(rayAngle);
-            float dy = sin(rayAngle);
+            float dxRay = cos(rayAngle);
+            float dyRay = sin(rayAngle);
 
             float closestDist = std::numeric_limits<float>::max();
             int hitLinedef = -1;
 
             for (size_t i = 0; i < lines.size(); i++) {
                 const auto& line = lines[i];
+                if (line.startVertex >= vertices.size() || line.endVertex >= vertices.size()) continue;
+
                 const Vertex& v1 = vertices[line.startVertex];
                 const Vertex& v2 = vertices[line.endVertex];
 
-                HitResult hit = rayLineIntersection(player.x, player.y, dx, dy,
+                HitResult hit = rayLineIntersection(player.x, player.y, dxRay, dyRay,
                                                     v1.x, v1.y, v2.x, v2.y);
                 if (hit.hit && hit.distance < closestDist) {
                     closestDist = hit.distance;
@@ -149,12 +177,16 @@ int main() {
                 }
             }
 
-            if (hitLinedef != -1) {
-                float wallHeight = 30000.0f / closestDist;
+            if (hitLinedef != -1 && closestDist > 0.1f) {
+                float dist = closestDist;
+                float wallHeight = 30000.0f / dist;
                 if (wallHeight > WINDOW_HEIGHT) wallHeight = WINDOW_HEIGHT;
 
                 int wallTop = (WINDOW_HEIGHT - wallHeight) / 2;
                 int wallBottom = wallTop + wallHeight;
+
+                if (wallTop < 0) wallTop = 0;
+                if (wallBottom > WINDOW_HEIGHT) wallBottom = WINDOW_HEIGHT;
 
                 SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
                 if (wallTop > 0) {
@@ -166,33 +198,21 @@ int main() {
                     SDL_RenderLine(renderer, x, wallBottom, x, WINDOW_HEIGHT);
                 }
 
-                SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+                SDL_SetRenderDrawColor(renderer, 200, 100, 50, 255);
                 SDL_RenderLine(renderer, x, wallTop, x, wallBottom);
             } else {
-                SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-                SDL_RenderLine(renderer, x, 0, x, WINDOW_HEIGHT);
+                SDL_SetRenderDrawColor(renderer, 100, 150, 200, 255);
+                SDL_RenderLine(renderer, x, 0, x, WINDOW_HEIGHT / 2);
+
+                SDL_SetRenderDrawColor(renderer, 50, 50, 80, 255);
+                SDL_RenderLine(renderer, x, WINDOW_HEIGHT / 2, x, WINDOW_HEIGHT);
             }
         }
 
         static int frameCount = 0;
         frameCount++;
-        if (frameCount % 60 == 0) {
-            float rayAngle = player.angle;
-            float dx = cos(rayAngle);
-            float dy = sin(rayAngle);
-            float closestDist = std::numeric_limits<float>::max();
-            for (size_t i = 0; i < lines.size(); i++) {
-                const auto& line = lines[i];
-                const Vertex& v1 = vertices[line.startVertex];
-                const Vertex& v2 = vertices[line.endVertex];
-                HitResult hit = rayLineIntersection(player.x, player.y, dx, dy,
-                                                    v1.x, v1.y, v2.x, v2.y);
-                if (hit.hit && hit.distance < closestDist) {
-                    closestDist = hit.distance;
-                }
-            }
-            std::cout << "Player: (" << player.x << ", " << player.y << ")  Angle: " << player.angle
-                      << "  Wall dist: " << closestDist << std::endl;
+        if (frameCount % 30 == 0) {
+            std::cout << "Player: (" << player.x << ", " << player.y << ")  Angle: " << player.angle << std::endl;
         }
 
         SDL_RenderPresent(renderer);
