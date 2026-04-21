@@ -23,7 +23,6 @@ file(GLOB_RECURSE GAME_SOURCES
         "src/WadLoader.cpp"
 )
 
-# ===== ИГРОВОЙ ДВИЖОК (game.exe) =====
 add_executable(game
         ${GAME_SOURCES}
         src/main.cpp
@@ -37,7 +36,6 @@ target_link_libraries(game
         ${SDL3_IMAGE_BASE}/lib/libSDL3_image.dll.a
 )
 
-# ===== РЕДАКТОР КАРТ (map_editor.exe) =====
 add_executable(map_editor
         ${GAME_SOURCES}
         lib/tools/editor_main.cpp

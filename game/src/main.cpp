@@ -7,11 +7,7 @@
 #include <sstream>
 #include <cstring>
 #include <SDL3/SDL.h>
-<<<<<<< HEAD
-#include "game/WadLoader.h"
-=======
 #include <SDL3_image/SDL_image.h>
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 #include "game/DoomMap.h"
 #include "game/Player.h"
 #include "SDL3/SDL.h"
@@ -128,13 +124,8 @@ bool pointInAnyObstacle(float px, float py) {
 
 int main() {
     DoomMap map;
-<<<<<<< HEAD
-    if (!map.loadFromTextFile("level3.txt")) {
-        std::cerr << "Не удалось загрузить карту из level3.txt" << std::endl;
-=======
     if (!map.loadFromTextFile("level1.txt")) {
         std::cerr << "Не удалось загрузить карту из level1.txt" << std::endl;
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
         return 1;
     }
 
@@ -164,13 +155,6 @@ int main() {
     player.x = centerX;
     player.y = centerY;
     player.angle = 0.0f;
-<<<<<<< HEAD
-    player.speed = 150.0f;
-
-    std::cout << "Стартовая позиция: (" << player.x << ", " << player.y << ")" << std::endl;
-    std::cout << "Границы карты: X[" << minX << "," << maxX << "] Y[" << minY << "," << maxY << "]" << std::endl;
-    std::cout << "Управление: WASD - движение, стрелки - поворот" << std::endl;
-=======
     player.speed = 400.0f;
 
     std::cout << "Стартовая позиция: (" << player.x << ", " << player.y << ")" << std::endl;
@@ -184,7 +168,6 @@ int main() {
         {256, 576}, {256, 448}, {320, 416}, {352, 352}, {352, 256},
         {320, 160}, {256, 128}, {256, 64}, {352, 64}, {352, 0}, {224, -128}
     };
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "Ошибка инициализации SDL: " << SDL_GetError() << std::endl;
@@ -193,11 +176,7 @@ int main() {
 
     const int WINDOW_WIDTH = 1280;
     const int WINDOW_HEIGHT = 960;
-<<<<<<< HEAD
-    SDL_Window* window = SDL_CreateWindow("Doom Clone - Your Map", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL);
-=======
     SDL_Window* window = SDL_CreateWindow("Doom Clone - Your Map", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     if (!window) {
         std::cerr << "Ошибка создания окна: " << SDL_GetError() << std::endl;
         SDL_Quit();
@@ -212,8 +191,6 @@ int main() {
         return 1;
     }
 
-<<<<<<< HEAD
-=======
     Texture wallTex = loadTexture(renderer, "textures/stena.png");
     Texture floorTex = loadTexture(renderer, "textures/pol.png");
     Texture ceilingTex = loadTexture(renderer, "textures/potolok.png");
@@ -234,7 +211,6 @@ int main() {
         ceilingTex.height = 64;
     }
 
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     const float FOV = 90.0f * M_PI / 180.0f;
 
     bool running = true;
@@ -245,7 +221,6 @@ int main() {
         Uint64 currentTime = SDL_GetTicks();
         float deltaTime = (currentTime - lastTime) / 1000.0f;
         lastTime = currentTime;
-        if (deltaTime > 0.033f) deltaTime = 0.033f;
 
         if (deltaTime > 0.033f) deltaTime = 0.033f;
         if (deltaTime < 0.001f) deltaTime = 0.001f;
@@ -259,18 +234,11 @@ int main() {
             }
         }
 
-<<<<<<< HEAD
-        float moveSpeed = player.speed * deltaTime;
-        float turnSpeed = 2.0f * deltaTime;
-=======
         const bool* keyboard = SDL_GetKeyboardState(nullptr);
 
         float dx = 0, dy = 0;
         float moveSpeed = player.speed * deltaTime;
         float turnSpeed = 4.0f * deltaTime;
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
-
-        float dx = 0, dy = 0;
 
         if (keyboard[SDL_SCANCODE_W]) {
             dx += cos(player.angle) * moveSpeed;
@@ -287,16 +255,6 @@ int main() {
         if (keyboard[SDL_SCANCODE_D]) {
             dx -= sin(player.angle) * moveSpeed;
             dy += cos(player.angle) * moveSpeed;
-<<<<<<< HEAD
-        }
-
-        // Временное отключение коллизий для теста
-        player.x += dx;
-        player.y += dy;
-
-        if (keyboard[SDL_SCANCODE_LEFT]) player.turnLeft(turnSpeed);
-        if (keyboard[SDL_SCANCODE_RIGHT]) player.turnRight(turnSpeed);
-=======
         }
 
         if (dx != 0 || dy != 0) {
@@ -308,7 +266,6 @@ int main() {
 
         while (player.angle < 0) player.angle += 2 * M_PI;
         while (player.angle >= 2 * M_PI) player.angle -= 2 * M_PI;
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
@@ -341,15 +298,10 @@ int main() {
             }
 
             if (hitLinedef != -1 && closestDist > 0.1f) {
-<<<<<<< HEAD
-                float dist = closestDist;
-                float wallHeight = 30000.0f / dist;
-=======
                 float correctedDist = closestDist * cos(rayAngle - player.angle);
                 if (correctedDist < 0.1f) correctedDist = 0.1f;
 
                 float wallHeight = (64.0f / correctedDist) * WINDOW_HEIGHT;
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
                 if (wallHeight > WINDOW_HEIGHT) wallHeight = WINDOW_HEIGHT;
 
                 int wallTop = (WINDOW_HEIGHT - wallHeight) / 2;
@@ -358,11 +310,6 @@ int main() {
                 if (wallTop < 0) wallTop = 0;
                 if (wallBottom > WINDOW_HEIGHT) wallBottom = WINDOW_HEIGHT;
 
-<<<<<<< HEAD
-                SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-                if (wallTop > 0) {
-                    SDL_RenderLine(renderer, x, 0, x, wallTop);
-=======
                 const auto& line = lines[hitLinedef];
                 const Vertex& v1 = vertices[line.startVertex];
                 const Vertex& v2 = vertices[line.endVertex];
@@ -376,22 +323,11 @@ int main() {
                     float toHitX = hitX - v1.x;
                     float toHitY = hitY - v1.y;
                     hitPos = (toHitX * lineDx + toHitY * lineDy) / lineLen;
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
                 }
 
                 int texX = (int)(hitPos * wallTex.width) % wallTex.width;
                 if (texX < 0) texX += wallTex.width;
 
-<<<<<<< HEAD
-                SDL_SetRenderDrawColor(renderer, 200, 100, 50, 255);
-                SDL_RenderLine(renderer, x, wallTop, x, wallBottom);
-            } else {
-                SDL_SetRenderDrawColor(renderer, 100, 150, 200, 255);
-                SDL_RenderLine(renderer, x, 0, x, WINDOW_HEIGHT / 2);
-
-                SDL_SetRenderDrawColor(renderer, 50, 50, 80, 255);
-                SDL_RenderLine(renderer, x, WINDOW_HEIGHT / 2, x, WINDOW_HEIGHT);
-=======
                 for (int y = wallTop; y < wallBottom; y++) {
                     float texYcoord = (float)(y - wallTop) / wallHeight;
                     int texY = (int)(texYcoord * wallTex.height) % wallTex.height;
@@ -454,17 +390,12 @@ int main() {
                     SDL_FRect dstRect = {(float)x, (float)y, 1, 1};
                     SDL_RenderTexture(renderer, floorTex.texture, &srcRect, &dstRect);
                 }
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
             }
         }
 
         static int frameCount = 0;
         frameCount++;
-<<<<<<< HEAD
-        if (frameCount % 30 == 0) {
-=======
         if (frameCount % 60 == 0) {
->>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
             std::cout << "Player: (" << player.x << ", " << player.y << ")  Angle: " << player.angle << std::endl;
         }
 
