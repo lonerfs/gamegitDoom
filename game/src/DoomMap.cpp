@@ -103,6 +103,8 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
     int lineNum = 0;
     int vertexCount = 0;
     int linedefCount = 0;
+    int sidedefCount = 0;
+    int sectorCount = 0;
 
     std::cout << "Loading map from text file: " << filename << std::endl;
 
@@ -135,22 +137,72 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
             }
         }
         else if (section == "LINEDEFS") {
-            int start, end;
-            if (iss >> start >> end) {
+            int start, end, flags, type, sectorTag, rightSidedef, leftSidedef;
+            if (iss >> start >> end >> flags >> type >> sectorTag >> rightSidedef >> leftSidedef) {
                 linedefs.push_back({
                     static_cast<uint16_t>(start),
                     static_cast<uint16_t>(end),
-                    0, 0, 0, 0, 0xFFFF
+                    static_cast<uint16_t>(flags),
+                    static_cast<uint16_t>(type),
+                    static_cast<uint16_t>(sectorTag),
+                    static_cast<uint16_t>(rightSidedef),
+                    static_cast<uint16_t>(leftSidedef)
                 });
                 linedefCount++;
             } else {
                 std::cerr << "  Error parsing LINEDEFS at line " << lineNum << ": " << line << std::endl;
             }
         }
+        else if (section == "SIDEDEFS") {
+            int xOffset, yOffset, sector;
+            std::string upperTex, lowerTex, middleTex;
+            if (iss >> xOffset >> yOffset >> upperTex >> lowerTex >> middleTex >> sector) {
+                Sidedef sd;
+                sd.xOffset = static_cast<int16_t>(xOffset);
+                sd.yOffset = static_cast<int16_t>(yOffset);
+                strncpy(sd.upperTex, upperTex.c_str(), 8);
+                sd.upperTex[7] = '\0';
+                strncpy(sd.lowerTex, lowerTex.c_str(), 8);
+                sd.lowerTex[7] = '\0';
+                strncpy(sd.middleTex, middleTex.c_str(), 8);
+                sd.middleTex[7] = '\0';
+                sd.sector = static_cast<uint16_t>(sector);
+                sidedefs.push_back(sd);
+                sidedefCount++;
+            } else {
+                std::cerr << "  Error parsing SIDEDEFS at line " << lineNum << ": " << line << std::endl;
+            }
+        }
+        else if (section == "SECTORS") {
+            int floorHeight, ceilingHeight, lightLevel, special, tag;
+            std::string floorTex, ceilingTex;
+            if (iss >> floorHeight >> ceilingHeight >> floorTex >> ceilingTex >> lightLevel >> special >> tag) {
+                Sector s;
+                s.floorHeight = static_cast<int16_t>(floorHeight);
+                s.ceilingHeight = static_cast<int16_t>(ceilingHeight);
+                strncpy(s.floorTex, floorTex.c_str(), 8);
+                s.floorTex[7] = '\0';
+                strncpy(s.ceilingTex, ceilingTex.c_str(), 8);
+                s.ceilingTex[7] = '\0';
+                s.lightLevel = static_cast<uint16_t>(lightLevel);
+                s.special = static_cast<uint16_t>(special);
+                s.tag = static_cast<uint16_t>(tag);
+                sectors.push_back(s);
+                sectorCount++;
+            } else {
+                std::cerr << "  Error parsing SECTORS at line " << lineNum << ": " << line << std::endl;
+            }
+        }
         else if (section == "THINGS") {
-            int x, y, type;
-            if (iss >> x >> y >> type) {
-                things.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y), 0, static_cast<int16_t>(type), 0});
+            int x, y, angle, type, flags;
+            if (iss >> x >> y >> angle >> type >> flags) {
+                things.push_back({
+                    static_cast<int16_t>(x),
+                    static_cast<int16_t>(y),
+                    static_cast<int16_t>(angle),
+                    static_cast<int16_t>(type),
+                    static_cast<uint16_t>(flags)
+                });
             } else {
                 std::cerr << "  Error parsing THINGS at line " << lineNum << ": " << line << std::endl;
             }
@@ -160,6 +212,8 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
     std::cout << "Loaded map from " << filename << ":\n"
               << "  Vertices: " << vertexCount << "\n"
               << "  Linedefs: " << linedefCount << "\n"
+              << "  Sidedefs: " << sidedefCount << "\n"
+              << "  Sectors: " << sectorCount << "\n"
               << "  Things: " << things.size() << std::endl;
 
     if (vertices.empty()) {
