@@ -10,6 +10,10 @@
 #include <cstring>
 #include <algorithm>
 #include <cctype>
+<<<<<<< HEAD
+=======
+#include <filesystem>
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 #include "game/DoomMap.h"
 #include "game/WadLoader.h"
 
@@ -75,6 +79,11 @@ int viewOffsetX = 400;
 int viewOffsetY = 360;
 int gridSize = 64;
 
+<<<<<<< HEAD
+=======
+std::string currentFileName = "level1.txt";
+
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 struct ThingType {
     const char* name;
     int doomEdNum;
@@ -114,6 +123,30 @@ void screenToWorld(int sx, int sy, int& wx, int& wy) {
     wy = (int)round(-(sy - viewOffsetY) / viewScale);
 }
 
+<<<<<<< HEAD
+=======
+void centerViewOnMap() {
+    const auto& verts = map.getVertices();
+    if (verts.empty()) return;
+
+    int minX = verts[0].x, maxX = verts[0].x;
+    int minY = verts[0].y, maxY = verts[0].y;
+    for (const auto& v : verts) {
+        minX = std::min(minX, (int)v.x);
+        maxX = std::max(maxX, (int)v.x);
+        minY = std::min(minY, (int)v.y);
+        maxY = std::max(maxY, (int)v.y);
+    }
+
+    int centerX = (minX + maxX) / 2;
+    int centerY = (minY + maxY) / 2;
+
+    viewOffsetX = 400 - centerX;
+    viewOffsetY = 360 + centerY;
+    viewScale = 1.0f;
+}
+
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
 void drawGrid(SDL_Renderer* renderer, int screenWidth, int screenHeight) {
     int worldTopLeftX, worldTopLeftY;
     int worldTopRightX, worldTopRightY;
@@ -212,7 +245,11 @@ bool saveToTextFile(DoomMap& m, const std::string& filename) {
 
     file << "\n[LINEDEFS]\n";
     for (const auto& l : linedefs) {
+<<<<<<< HEAD
         file << l.startVertex << " " << l.endVertex << " 4 0 0 0 65535\n";
+=======
+        file << l.startVertex << " " << l.endVertex << " 4 0 0 0 0 65535\n";
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     }
 
     file << "\n[THINGS]\n";
@@ -264,14 +301,58 @@ bool deleteSelected(void*) {
     return true;
 }
 
+<<<<<<< HEAD
 bool saveMap(void*) {
     saveToTextFile(map, "lastmap.txt");
+=======
+bool saveCurrentMap(void*) {
+    saveToTextFile(map, currentFileName);
+    std::cout << "Saved to " << currentFileName << std::endl;
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     return true;
 }
 
 bool exportToWad(void*) {
+<<<<<<< HEAD
     saveToTextFile(map, "lastmap.txt");
     std::cout << "Exported to WAD" << std::endl;
+=======
+    saveToTextFile(map, currentFileName);
+    std::cout << "Exported to WAD" << std::endl;
+    return true;
+}
+
+bool loadLevel1(void*) {
+    currentFileName = "level1.txt";
+    map.loadFromTextFile(currentFileName);
+    selectedVertex = -1;
+    selectedThing = -1;
+    pendingLineStart = -1;
+    centerViewOnMap();
+    std::cout << "Loaded " << currentFileName << std::endl;
+    return true;
+}
+
+bool loadLevel2(void*) {
+    currentFileName = "level2.txt";
+    map.loadFromTextFile(currentFileName);
+    selectedVertex = -1;
+    selectedThing = -1;
+    pendingLineStart = -1;
+    centerViewOnMap();
+    std::cout << "Loaded " << currentFileName << std::endl;
+    return true;
+}
+
+bool loadLevel3(void*) {
+    currentFileName = "level3.txt";
+    map.loadFromTextFile(currentFileName);
+    selectedVertex = -1;
+    selectedThing = -1;
+    pendingLineStart = -1;
+    centerViewOnMap();
+    std::cout << "Loaded " << currentFileName << std::endl;
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     return true;
 }
 
@@ -283,17 +364,39 @@ int main(int argc, char* argv[]) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
     TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 14);
     TTF_Font* smallFont = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 11);
+<<<<<<< HEAD
 
     map.loadFromTextFile("lastmap.txt");
 
+=======
+
+    // Загружаем уровень 1 по умолчанию
+    currentFileName = "level1.txt";
+    if (!map.loadFromTextFile(currentFileName)) {
+        std::cerr << "Failed to load " << currentFileName << ", starting with empty map" << std::endl;
+    }
+    centerViewOnMap();
+
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     std::vector<Button> buttons;
     buttons.push_back({{10,10,80,30}, "Vertex", false, setModeVertex, nullptr});
     buttons.push_back({{100,10,80,30}, "Line", false, setModeLine, nullptr});
     buttons.push_back({{190,10,80,30}, "Thing", false, setModeThing, nullptr});
     buttons.push_back({{280,10,80,30}, "Delete", false, deleteSelected, nullptr});
+<<<<<<< HEAD
     buttons.push_back({{370,10,80,30}, "Save", false, saveMap, nullptr});
     buttons.push_back({{460,10,100,30}, "To WAD", false, exportToWad, nullptr});
 
+=======
+    buttons.push_back({{370,10,80,30}, "Save", false, saveCurrentMap, nullptr});
+    buttons.push_back({{460,10,100,30}, "To WAD", false, exportToWad, nullptr});
+
+    // Кнопки для загрузки уровней
+    buttons.push_back({{570,10,80,30}, "Level 1", false, loadLevel1, nullptr});
+    buttons.push_back({{660,10,80,30}, "Level 2", false, loadLevel2, nullptr});
+    buttons.push_back({{750,10,80,30}, "Level 3", false, loadLevel3, nullptr});
+
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
     int currentThingType = 0;
 
     bool running = true;
@@ -506,6 +609,20 @@ int main(int argc, char* argv[]) {
         else if (currentMode == MODE_LINE) modeText = "Mode: LINE - Click on two vertices to create a line";
         else modeText = "Mode: THING - Current: " + std::string(thingTypes[currentThingType].name) + " (Press TAB to change)";
 
+<<<<<<< HEAD
+=======
+        // Добавляем текущий файл в панель
+        std::string fileText = "Current: " + currentFileName;
+        SDL_Surface* fileSurf = TTF_RenderText_Solid(font, fileText.c_str(), 0, SDL_Color{200,200,200,255});
+        if (fileSurf) {
+            SDL_Texture* fileTex = SDL_CreateTextureFromSurface(renderer, fileSurf);
+            SDL_FRect fileDst = {15, 80, (float)fileSurf->w, (float)fileSurf->h};
+            SDL_RenderTexture(renderer, fileTex, NULL, &fileDst);
+            SDL_DestroyTexture(fileTex);
+            SDL_DestroySurface(fileSurf);
+        }
+
+>>>>>>> 3c2a8b4c06806b14ae40e339208cc59ac610bbc4
         SDL_Surface* modeSurf = TTF_RenderText_Solid(font, modeText.c_str(), 0, SDL_Color{255,255,255,255});
         if (modeSurf) {
             SDL_Texture* modeTex = SDL_CreateTextureFromSurface(renderer, modeSurf);
