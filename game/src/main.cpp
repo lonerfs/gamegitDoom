@@ -10,6 +10,7 @@
 #include <SDL3_image/SDL_image.h>
 #include "game/DoomMap.h"
 #include "game/Player.h"
+#include "SDL3/SDL.h"
 
 struct HitResult {
     bool hit;
