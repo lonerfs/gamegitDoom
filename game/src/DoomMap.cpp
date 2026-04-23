@@ -103,8 +103,11 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
     int lineNum = 0;
     int vertexCount = 0;
     int linedefCount = 0;
+<<<<<<< Updated upstream
     int sidedefCount = 0;
     int sectorCount = 0;
+=======
+>>>>>>> Stashed changes
 
     std::cout << "Loading map from text file: " << filename << std::endl;
 
@@ -137,6 +140,7 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
             }
         }
         else if (section == "LINEDEFS") {
+<<<<<<< Updated upstream
             int start, end, flags, type, sectorTag, rightSidedef, leftSidedef;
             if (iss >> start >> end >> flags >> type >> sectorTag >> rightSidedef >> leftSidedef) {
                 linedefs.push_back({
@@ -147,12 +151,21 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
                     static_cast<uint16_t>(sectorTag),
                     static_cast<uint16_t>(rightSidedef),
                     static_cast<uint16_t>(leftSidedef)
+=======
+            int start, end;
+            if (iss >> start >> end) {
+                linedefs.push_back({
+                    static_cast<uint16_t>(start),
+                    static_cast<uint16_t>(end),
+                    0, 0, 0, 0, 0xFFFF
+>>>>>>> Stashed changes
                 });
                 linedefCount++;
             } else {
                 std::cerr << "  Error parsing LINEDEFS at line " << lineNum << ": " << line << std::endl;
             }
         }
+<<<<<<< Updated upstream
         else if (section == "SIDEDEFS") {
             int xOffset, yOffset, sector;
             std::string upperTex, lowerTex, middleTex;
@@ -203,6 +216,12 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
                     static_cast<int16_t>(type),
                     static_cast<uint16_t>(flags)
                 });
+=======
+        else if (section == "THINGS") {
+            int x, y, type;
+            if (iss >> x >> y >> type) {
+                things.push_back({static_cast<int16_t>(x), static_cast<int16_t>(y), 0, static_cast<int16_t>(type), 0});
+>>>>>>> Stashed changes
             } else {
                 std::cerr << "  Error parsing THINGS at line " << lineNum << ": " << line << std::endl;
             }
@@ -212,8 +231,11 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
     std::cout << "Loaded map from " << filename << ":\n"
               << "  Vertices: " << vertexCount << "\n"
               << "  Linedefs: " << linedefCount << "\n"
+<<<<<<< Updated upstream
               << "  Sidedefs: " << sidedefCount << "\n"
               << "  Sectors: " << sectorCount << "\n"
+=======
+>>>>>>> Stashed changes
               << "  Things: " << things.size() << std::endl;
 
     if (vertices.empty()) {
