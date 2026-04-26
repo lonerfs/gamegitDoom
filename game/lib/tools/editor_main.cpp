@@ -13,6 +13,7 @@
 #include <filesystem>
 #include "game/DoomMap.h"
 #include "game/WadLoader.h"
+#include "MapToWad.h"
 
 struct Button {
     SDL_FRect rect;
@@ -295,8 +296,21 @@ bool saveCurrentMap(void*) {
 }
 
 bool exportToWad(void*) {
-    saveToTextFile(map, currentFileName);
-    std::cout << "Exported to WAD" << std::endl;
+    std::string mapName;
+    if (currentFileName == "level1.txt") mapName = "MAP01";
+    else if (currentFileName == "level2.txt") mapName = "MAP02";
+    else if (currentFileName == "level3.txt") mapName = "MAP03";
+    else mapName = "MAP01";
+
+    // Добавляем текстуры в WAD
+    MapToWad::addAllTexturesToWad("mymaps.wad", "textures");
+
+    // Добавляем карту в WAD
+    if (MapToWad::addMapToWad("mymaps.wad", currentFileName, mapName)) {
+        std::cout << "Exported " << currentFileName << " with textures to mymaps.wad as " << mapName << std::endl;
+    } else {
+        std::cerr << "Failed to export to WAD" << std::endl;
+    }
     return true;
 }
 
@@ -342,7 +356,6 @@ int main(int argc, char* argv[]) {
     TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 14);
     TTF_Font* smallFont = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 11);
 
-    // Загружаем уровень 1 по умолчанию
     currentFileName = "level1.txt";
     if (!map.loadFromTextFile(currentFileName)) {
         std::cerr << "Failed to load " << currentFileName << ", starting with empty map" << std::endl;
@@ -357,7 +370,6 @@ int main(int argc, char* argv[]) {
     buttons.push_back({{370,10,80,30}, "Save", false, saveCurrentMap, nullptr});
     buttons.push_back({{460,10,100,30}, "To WAD", false, exportToWad, nullptr});
 
-    // Кнопки для загрузки уровней
     buttons.push_back({{570,10,80,30}, "Level 1", false, loadLevel1, nullptr});
     buttons.push_back({{660,10,80,30}, "Level 2", false, loadLevel2, nullptr});
     buttons.push_back({{750,10,80,30}, "Level 3", false, loadLevel3, nullptr});
@@ -570,13 +582,17 @@ int main(int argc, char* argv[]) {
         SDL_RenderFillRect(renderer, &modePanel);
 
         std::string modeText;
-        if (currentMode == MODE_VERTEX) modeText = "Mode: VERTEX - Click to add/move vertices | +/- to change grid | Delete to remove selected";
-        else if (currentMode == MODE_LINE) modeText = "Mode: LINE - Click on two vertices to create a line";
-        else modeText = "Mode: THING - Current: " + std::string(thingTypes[currentThingType].name) + " (Press TAB to change)";
+        if (currentMode == MODE_VERTEX) {
+            modeText = "Mode: VERTEX - Click to add/move vertices | +/- to change grid | Delete to remove selected";
+        } else if (currentMode == MODE_LINE) {
+            modeText = "Mode: LINE - Click on two vertices to create a line";
+        } else {
+            modeText = "Mode: THING - Current: " + std::string(thingTypes[currentThingType].name) + " (Press TAB to change)";
+        }
 
-        // Добавляем текущий файл в панель
         std::string fileText = "Current: " + currentFileName;
-        SDL_Surface* fileSurf = TTF_RenderText_Solid(font, fileText.c_str(), 0, SDL_Color{200,200,200,255});
+
+        SDL_Surface* fileSurf = TTF_RenderText_Solid(smallFont, fileText.c_str(), 0, SDL_Color{200,200,200,255});
         if (fileSurf) {
             SDL_Texture* fileTex = SDL_CreateTextureFromSurface(renderer, fileSurf);
             SDL_FRect fileDst = {15, 80, (float)fileSurf->w, (float)fileSurf->h};
