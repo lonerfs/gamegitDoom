@@ -55,6 +55,7 @@ std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
     std::vector<MapInfo> maps;
     const auto& lumps = wad.getLumps();
 
+    // Сначала добавляем ТВОИ карты (txt)
     if (std::ifstream("level1.txt").good()) {
         maps.push_back({"MY LEVEL 1", "txt", true});
     }
@@ -65,6 +66,7 @@ std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
         maps.push_back({"MY LEVEL 3", "txt", true});
     }
 
+    // Потом WAD карты
     for (const auto& lump : lumps) {
         std::string name(lump.name, 8);
         name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
@@ -93,8 +95,11 @@ void listAllLumps(const WadLoader& wad) {
     std::cout << "================" << std::endl;
 }
 
+// Загрузка PNG текстуры из папки textures/
 SDL_Texture* loadTexture(SDL_Renderer* renderer, const std::string& path) {
+    // Строим путь к файлу в папке textures/
     std::string fullPath = "textures/" + path;
+
     std::cout << "Пытаюсь загрузить: " << fullPath << std::endl;
 
     SDL_Surface* surf = IMG_Load(fullPath.c_str());
@@ -155,6 +160,7 @@ int main() {
     }
 
     listAllLumps(wad);
+
     std::vector<MapInfo> maps = getAllMaps(wad);
 
     if (maps.empty()) {
@@ -177,6 +183,7 @@ int main() {
     bool inMenu = true;
     bool running = true;
     SDL_Event event;
+
     int scrollOffset = 0;
     int maxVisible = 15;
 
@@ -208,7 +215,9 @@ int main() {
                 if (event.key.scancode == SDL_SCANCODE_UP) {
                     if (selectedMapIndex > 0) {
                         selectedMapIndex--;
-                        if (selectedMapIndex < scrollOffset) scrollOffset = selectedMapIndex;
+                        if (selectedMapIndex < scrollOffset) {
+                            scrollOffset = selectedMapIndex;
+                        }
                         if (maps[selectedMapIndex].isCustom) {
                             std::string txtFile = "level" + std::to_string(selectedMapIndex + 1) + ".txt";
                             hasPreview = previewMap.loadFromTextFile(txtFile);
@@ -270,7 +279,9 @@ int main() {
 
             SDL_Color color = (mapIdx == selectedMapIndex) ? SDL_Color{255, 200, 0, 255} : SDL_Color{200, 200, 200, 255};
             std::string displayName = maps[mapIdx].name;
-            if (maps[mapIdx].isCustom) displayName = "★ " + displayName;
+            if (maps[mapIdx].isCustom) {
+                displayName = "★ " + displayName;
+            }
 
             SDL_Surface* mapSurf = TTF_RenderText_Solid(smallFont, displayName.c_str(), 0, color);
             if (mapSurf) {
@@ -298,7 +309,9 @@ int main() {
         SDL_RenderRect(renderer, &previewPanel);
 
         std::string selectedName = maps[selectedMapIndex].name;
-        if (maps[selectedMapIndex].isCustom) selectedName = "★ " + selectedName;
+        if (maps[selectedMapIndex].isCustom) {
+            selectedName = "★ " + selectedName;
+        }
         SDL_Surface* nameSurf = TTF_RenderText_Solid(font, selectedName.c_str(), 0, SDL_Color{255, 200, 0, 255});
         if (nameSurf) {
             SDL_Texture* nameTex = SDL_CreateTextureFromSurface(renderer, nameSurf);
@@ -321,6 +334,7 @@ int main() {
             float scaleX = 700.0f / (maxX - minX);
             float scaleY = 600.0f / (maxY - minY);
             float scale = std::min(scaleX, scaleY) * 0.8f;
+
             float offsetX = 460 + (700 - (maxX - minX) * scale) / 2 - minX * scale;
             float offsetY = 180 + (600 - (maxY - minY) * scale) / 2 + maxY * scale;
 
@@ -422,8 +436,9 @@ int main() {
 
     std::cout << "Стартовая позиция: (" << player.x << ", " << player.y << ")" << std::endl;
     std::cout << "Границы карты: X[" << minX << "," << maxX << "] Y[" << minY << "," << maxY << "]" << std::endl;
-    std::cout << "Управление: WASD - движение, стрелки - поворот, ESC - выход" << std::endl;
+    std::cout << "Управление: WASD - движение, стрелки - поворот" << std::endl;
 
+    // ЗАГРУЖАЕМ ТЕКСТУРЫ ДЛЯ ТВОИХ КАРТ ИЗ ПАПКИ textures/
     SDL_Texture* floorTex = nullptr;
     SDL_Texture* ceilingTex = nullptr;
     SDL_Texture* wallTex = nullptr;
@@ -455,21 +470,39 @@ int main() {
         if (deltaTime < 0.001f) deltaTime = 0.001f;
 
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) running = false;
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
+            if (event.type == SDL_EVENT_QUIT) {
+                running = false;
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {
+                running = false;
+            }
         }
 
         const bool* keyboard = SDL_GetKeyboardState(nullptr);
 
         float moveSpeed = player.speed * deltaTime;
         float turnSpeed = 2.0f * deltaTime;
+
         float dx = 0, dy = 0;
 
-        if (keyboard[SDL_SCANCODE_W]) { dx += cos(player.angle) * moveSpeed; dy += sin(player.angle) * moveSpeed; }
-        if (keyboard[SDL_SCANCODE_S]) { dx -= cos(player.angle) * moveSpeed; dy -= sin(player.angle) * moveSpeed; }
-        if (keyboard[SDL_SCANCODE_A]) { dx += sin(player.angle) * moveSpeed; dy -= cos(player.angle) * moveSpeed; }
-        if (keyboard[SDL_SCANCODE_D]) { dx -= sin(player.angle) * moveSpeed; dy += cos(player.angle) * moveSpeed; }
+        if (keyboard[SDL_SCANCODE_W]) {
+            dx += cos(player.angle) * moveSpeed;
+            dy += sin(player.angle) * moveSpeed;
+        }
+        if (keyboard[SDL_SCANCODE_S]) {
+            dx -= cos(player.angle) * moveSpeed;
+            dy -= sin(player.angle) * moveSpeed;
+        }
+        if (keyboard[SDL_SCANCODE_A]) {
+            dx += sin(player.angle) * moveSpeed;
+            dy -= cos(player.angle) * moveSpeed;
+        }
+        if (keyboard[SDL_SCANCODE_D]) {
+            dx -= sin(player.angle) * moveSpeed;
+            dy += cos(player.angle) * moveSpeed;
+        }
 
+        // Временное отключение коллизий для теста
         player.x += dx;
         player.y += dy;
 
@@ -482,18 +515,21 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Пол
+        // ОТРИСОВКА ПОЛА
         if (useMyTextures && floorTex) {
             for (int y = WINDOW_HEIGHT / 2; y < WINDOW_HEIGHT; y++) {
                 float vy = (float)(y - WINDOW_HEIGHT / 2) / (WINDOW_HEIGHT / 2);
                 if (vy == 0) continue;
+
                 float vz = 1.0f / vy;
                 float px = player.x + cos(player.angle) * vz * 50.0f;
                 float py = player.y + sin(player.angle) * vz * 50.0f;
+
                 float tx = fmod(px / 64.0f, 1.0f);
                 float ty = fmod(py / 64.0f, 1.0f);
                 if (tx < 0) tx += 1;
                 if (ty < 0) ty += 1;
+
                 SDL_FRect srcRect = {tx * floorTexW, ty * floorTexH, 1, 1};
                 SDL_FRect dstRect = {0, (float)y, (float)WINDOW_WIDTH, 1};
                 SDL_RenderTexture(renderer, floorTex, &srcRect, &dstRect);
@@ -504,18 +540,21 @@ int main() {
             SDL_RenderFillRect(renderer, &floorRect);
         }
 
-        // Потолок
+        // ОТРИСОВКА ПОТОЛКА
         if (useMyTextures && ceilingTex) {
             for (int y = 0; y < WINDOW_HEIGHT / 2; y++) {
                 float vy = (float)(y - WINDOW_HEIGHT / 2) / (WINDOW_HEIGHT / 2);
                 if (vy == 0) continue;
+
                 float vz = -1.0f / vy;
                 float px = player.x + cos(player.angle) * vz * 50.0f;
                 float py = player.y + sin(player.angle) * vz * 50.0f;
+
                 float tx = fmod(px / 64.0f, 1.0f);
                 float ty = fmod(py / 64.0f, 1.0f);
                 if (tx < 0) tx += 1;
                 if (ty < 0) ty += 1;
+
                 SDL_FRect srcRect = {tx * ceilingTexW, ty * ceilingTexH, 1, 1};
                 SDL_FRect dstRect = {0, (float)y, (float)WINDOW_WIDTH, 1};
                 SDL_RenderTexture(renderer, ceilingTex, &srcRect, &dstRect);
@@ -526,7 +565,7 @@ int main() {
             SDL_RenderFillRect(renderer, &ceilingRect);
         }
 
-        // Стены
+        // ОТРИСОВКА СТЕН
         for (int x = 0; x < WINDOW_WIDTH; x++) {
             float rayAngle = player.angle + (x - WINDOW_WIDTH / 2) * FOV / WINDOW_WIDTH;
             float dxRay = cos(rayAngle);
@@ -543,7 +582,8 @@ int main() {
                 const Vertex& v1 = vertices[line.startVertex];
                 const Vertex& v2 = vertices[line.endVertex];
 
-                HitResult hit = rayLineIntersection(player.x, player.y, dxRay, dyRay, v1.x, v1.y, v2.x, v2.y);
+                HitResult hit = rayLineIntersection(player.x, player.y, dxRay, dyRay,
+                                                    v1.x, v1.y, v2.x, v2.y);
                 if (hit.hit && hit.distance < closestDist && hit.distance > 0.1f) {
                     closestDist = hit.distance;
                     hitLinedef = i;
@@ -556,8 +596,12 @@ int main() {
                 if (correctedDist < 0.1f) correctedDist = 0.1f;
 
                 float wallHeight = (128.0f / correctedDist) * 200.0f;
-                int wallTop = (WINDOW_HEIGHT - wallHeight) / 2;
-                int wallBottom = wallTop + wallHeight;
+                int wallTop = (int)((WINDOW_HEIGHT - wallHeight) / 2);
+                int wallBottom = (int)(wallTop + wallHeight);
+
+                if (wallHeight > WINDOW_HEIGHT) wallHeight = WINDOW_HEIGHT;
+                wallTop = (WINDOW_HEIGHT - wallHeight) / 2;
+                wallBottom = wallTop + wallHeight;
 
                 if (wallTop < 0) wallTop = 0;
                 if (wallBottom > WINDOW_HEIGHT) wallBottom = WINDOW_HEIGHT;
@@ -571,6 +615,7 @@ int main() {
                         int texX = (int)(hitU * wallTexW);
                         if (texX < 0) texX = 0;
                         if (texX >= (int)wallTexW) texX = (int)wallTexW - 1;
+
                         SDL_FRect srcRect = {(float)texX, (float)texY, 1, 1};
                         SDL_FRect dstRect = {(float)x, (float)wy, 1, 1};
                         SDL_RenderTexture(renderer, wallTex, &srcRect, &dstRect);
@@ -579,6 +624,7 @@ int main() {
                     int brightness = (int)(255.0f / (correctedDist * 0.3f + 1.0f));
                     if (brightness > 255) brightness = 255;
                     if (brightness < 50) brightness = 50;
+
                     SDL_SetRenderDrawColor(renderer, brightness, 0, 0, 255);
                     SDL_RenderLine(renderer, x, wallTop, x, wallBottom);
                 }
