@@ -59,7 +59,6 @@ public:
     const std::vector<Sector>& getSectors() const { return sectors; }
     const std::vector<Thing>& getThings() const { return things; }
 
-    // Методы для установки данных
     void setVertices(const std::vector<Vertex>& verts) { vertices = verts; }
     void setLinedefs(const std::vector<Linedef>& lines) { linedefs = lines; }
     void setSidedefs(const std::vector<Sidedef>& sides) { sidedefs = sides; }
