@@ -13,6 +13,12 @@
 #include "game/Player.h"
 #include "game/WadLoader.h"
 
+struct BulletHole {
+    float x, y;
+    float distance;
+    int lifetime;
+};
+
 struct HitResult {
     bool hit;
     float distance;
@@ -61,6 +67,30 @@ HitResult shootRay(float x, float y, float angle, const std::vector<Linedef>& li
     return best;
 }
 
+void shootShotgun(float x, float y, float angle, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices,
+                  std::vector<BulletHole>& bulletHoles, int& ammo) {
+    if (ammo <= 0) {
+        std::cout << "Out of shotgun ammo!" << std::endl;
+        return;
+    }
+    const int PELLETS = 5;
+    const float SPREAD = 0.1f;
+    for (int i = 0; i < PELLETS; ++i) {
+        float spreadAngle = angle + ((float)rand() / RAND_MAX - 0.5f) * SPREAD;
+        HitResult hit = shootRay(x, y, spreadAngle, lines, vertices);
+        if (hit.hit) {
+            BulletHole hole;
+            hole.x = hit.hitX;
+            hole.y = hit.hitY;
+            hole.distance = hit.distance;
+            hole.lifetime = 300;
+            bulletHoles.push_back(hole);
+            if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
+        }
+    }
+    ammo--;
+}
+
 bool isPointVisible(float px, float py, float tx, float ty, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
     float dx = tx - px;
     float dy = ty - py;
@@ -78,7 +108,6 @@ bool isPointVisible(float px, float py, float tx, float ty, const std::vector<Li
             const Vertex& v2 = vertices[line.endVertex];
             HitResult hit = rayLineIntersection(px, py, nx, ny, v1.x, v1.y, v2.x, v2.y);
             if (hit.hit && hit.distance < d+step && hit.distance > 0.1f) {
-                // Если пересечение ближе, чем точка, то не видно
                 if (hit.distance < dist - 0.1f) return false;
             }
         }
@@ -158,10 +187,12 @@ void listAllLumps(const WadLoader& wad) {
     std::cout << "================" << std::endl;
 }
 
-struct BulletHole {
-    float x, y;
-    float distance;
-    int lifetime;
+enum WeaponType { PISTOL, SHOTGUN };
+
+struct Inventory {
+    WeaponType currentWeapon;
+    int shotgunAmmo;
+    Inventory() : currentWeapon(PISTOL), shotgunAmmo(10) {}
 };
 
 int main() {
@@ -229,14 +260,91 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 20,20,30,255);
         SDL_RenderClear(renderer);
 
-        SDL_Surface* ts = TTF_RenderText_Solid(font, "SELECT MAP (press ENTER)", 0, {255,100,0,255});
-        if (ts) {
-            SDL_Texture* tt = SDL_CreateTextureFromSurface(renderer, ts);
-            SDL_FRect rect = {WINDOW_WIDTH/2.0f - ts->w/2.0f, WINDOW_HEIGHT/2.0f - ts->h/2.0f, (float)ts->w, (float)ts->h};
-            SDL_RenderTexture(renderer, tt, NULL, &rect);
-            SDL_DestroyTexture(tt);
-            SDL_DestroySurface(ts);
+        SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "SELECT MAP", 0, {255,100,0,255});
+        if (titleSurf) {
+            SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
+            SDL_FRect tr = {WINDOW_WIDTH/2.0f - titleSurf->w/2.0f, 50, (float)titleSurf->w, (float)titleSurf->h};
+            SDL_RenderTexture(renderer, titleTex, NULL, &tr);
+            SDL_DestroyTexture(titleTex);
+            SDL_DestroySurface(titleSurf);
         }
+
+        SDL_SetRenderDrawColor(renderer, 40,40,50,255);
+        SDL_FRect listPanel = {50,120,350,700};
+        SDL_RenderFillRect(renderer, &listPanel);
+        SDL_SetRenderDrawColor(renderer, 100,100,120,255);
+        SDL_RenderRect(renderer, &listPanel);
+
+        int visibleCount = std::min(maxVisible, (int)maps.size()-scrollOffset);
+        for (int i=0; i<visibleCount; i++) {
+            int idx = scrollOffset+i;
+            SDL_Color col = (idx==selectedMapIndex)? SDL_Color{255,200,0,255} : SDL_Color{200,200,200,255};
+            std::string name = maps[idx].name;
+            if (maps[idx].isCustom) name = "★ "+name;
+            SDL_Surface* surf = TTF_RenderText_Solid(smallFont, name.c_str(), 0, col);
+            if (surf) {
+                SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+                SDL_FRect rect = {70, 140.0f+i*35, (float)surf->w, (float)surf->h};
+                SDL_RenderTexture(renderer, tex, NULL, &rect);
+                SDL_DestroyTexture(tex);
+                SDL_DestroySurface(surf);
+            }
+        }
+
+        if ((int)maps.size() > maxVisible) {
+            float percent = (float)scrollOffset/(maps.size()-maxVisible);
+            SDL_FRect bar = {390, 120+percent*700, 10, 20};
+            SDL_SetRenderDrawColor(renderer, 200,200,200,255);
+            SDL_RenderFillRect(renderer, &bar);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 30,30,40,255);
+        SDL_FRect previewPanel = {450,120,780,700};
+        SDL_RenderFillRect(renderer, &previewPanel);
+        SDL_SetRenderDrawColor(renderer, 100,100,120,255);
+        SDL_RenderRect(renderer, &previewPanel);
+
+        std::string selName = maps[selectedMapIndex].name;
+        if (maps[selectedMapIndex].isCustom) selName = "★ "+selName;
+        SDL_Surface* nameSurf = TTF_RenderText_Solid(font, selName.c_str(), 0, {255,200,0,255});
+        if (nameSurf) {
+            SDL_Texture* nameTex = SDL_CreateTextureFromSurface(renderer, nameSurf);
+            SDL_FRect nr = {WINDOW_WIDTH/2.0f - nameSurf->w/2.0f, 130, (float)nameSurf->w, (float)nameSurf->h};
+            SDL_RenderTexture(renderer, nameTex, NULL, &nr);
+            SDL_DestroyTexture(nameTex);
+            SDL_DestroySurface(nameSurf);
+        }
+
+        if (hasPreview && !previewVertices.empty()) {
+            int minX=previewVertices[0].x, maxX=minX, minY=previewVertices[0].y, maxY=minY;
+            for (auto& v: previewVertices) {
+                minX=std::min(minX,(int)v.x); maxX=std::max(maxX,(int)v.x);
+                minY=std::min(minY,(int)v.y); maxY=std::max(maxY,(int)v.y);
+            }
+            float sx = 700.0f/(maxX-minX), sy = 600.0f/(maxY-minY);
+            float scale = std::min(sx,sy)*0.8f;
+            float offX = 460 + (700 - (maxX-minX)*scale)/2 - minX*scale;
+            float offY = 180 + (600 - (maxY-minY)*scale)/2 + maxY*scale;
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            for (auto& line: previewLines) {
+                if (line.startVertex>=previewVertices.size() || line.endVertex>=previewVertices.size()) continue;
+                auto& v1=previewVertices[line.startVertex];
+                auto& v2=previewVertices[line.endVertex];
+                int x1 = v1.x*scale+offX, y1 = -v1.y*scale+offY;
+                int x2 = v2.x*scale+offX, y2 = -v2.y*scale+offY;
+                SDL_RenderLine(renderer, x1, y1, x2, y2);
+            }
+        }
+
+        SDL_Surface* instr = TTF_RenderText_Solid(smallFont, "UP/DOWN - select | ENTER - start | ★ - YOUR MAPS", 0, {150,150,150,255});
+        if (instr) {
+            SDL_Texture* ti = SDL_CreateTextureFromSurface(renderer, instr);
+            SDL_FRect ir = {WINDOW_WIDTH/2.0f - instr->w/2.0f, 850, (float)instr->w, (float)instr->h};
+            SDL_RenderTexture(renderer, ti, NULL, &ir);
+            SDL_DestroyTexture(ti);
+            SDL_DestroySurface(instr);
+        }
+
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
@@ -272,7 +380,9 @@ int main() {
     Uint64 lastShootTime = 0;
     const Uint64 SHOOT_DELAY_MS = 300;
     int shootFlashFrames = 0;
-    std::vector<BulletHole> bulletHoles;  // список дырок
+    std::vector<BulletHole> bulletHoles;
+
+    Inventory inventory;
 
     while (running) {
         Uint64 now = SDL_GetTicks();
@@ -284,26 +394,45 @@ int main() {
             if (event.type == SDL_EVENT_QUIT) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
 
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.scancode == SDL_SCANCODE_1) {
+                    inventory.currentWeapon = PISTOL;
+                    std::cout << "Switched to Pistol" << std::endl;
+                }
+                if (event.key.scancode == SDL_SCANCODE_2) {
+                    inventory.currentWeapon = SHOTGUN;
+                    std::cout << "Switched to Shotgun, ammo: " << inventory.shotgunAmmo << std::endl;
+                }
+            }
+
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                 if (now - lastShootTime >= SHOOT_DELAY_MS) {
                     lastShootTime = now;
                     shootFlashFrames = 5;
-                    HitResult shot = shootRay(player.x, player.y, player.angle, lines, vertices);
-                    if (shot.hit) {
-                        std::cout << "Shot hit at distance " << shot.distance
-                                  << ", coords: (" << shot.hitX << ", " << shot.hitY << ")" << std::endl;
-                        BulletHole hole;
-                        hole.x = shot.hitX;
-                        hole.y = shot.hitY;
-                        hole.distance = shot.distance;
-                        hole.lifetime = 300;   // ~5 секунд при 60 FPS
-                        bulletHoles.push_back(hole);
-                        if (bulletHoles.size() > 50) bulletHoles.erase(bulletHoles.begin());
+
+                    if (inventory.currentWeapon == PISTOL) {
+                        HitResult shot = shootRay(player.x, player.y, player.angle, lines, vertices);
+                        if (shot.hit) {
+                            std::cout << "Pistol shot at distance " << shot.distance << std::endl;
+                            BulletHole hole;
+                            hole.x = shot.hitX;
+                            hole.y = shot.hitY;
+                            hole.distance = shot.distance;
+                            hole.lifetime = 300;
+                            bulletHoles.push_back(hole);
+                            if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
+                        }
+                    } else if (inventory.currentWeapon == SHOTGUN) {
+                        if (inventory.shotgunAmmo <= 0) {
+                            std::cout << "No shotgun ammo!" << std::endl;
+                        } else {
+                            std::cout << "Shotgun fired!" << std::endl;
+                            shootShotgun(player.x, player.y, player.angle, lines, vertices, bulletHoles, inventory.shotgunAmmo);
+                        }
                     }
                 }
             }
         }
-
 
         const bool* keys = SDL_GetKeyboardState(nullptr);
         float move = player.speed * dt;
@@ -324,6 +453,7 @@ int main() {
         while (player.angle < 0) player.angle += 2*M_PI;
         while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
 
+        // Обновление жизни дырок
         for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
             it->lifetime--;
             if (it->lifetime <= 0) it = bulletHoles.erase(it);
@@ -333,6 +463,7 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
 
+        // Пол
         SDL_SetRenderDrawColor(renderer, 60, 30, 15, 255);
         SDL_FRect floorRect = {0, (float)WINDOW_HEIGHT/2, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT/2};
         SDL_RenderFillRect(renderer, &floorRect);
@@ -385,24 +516,19 @@ int main() {
 
         for (const auto& hole : bulletHoles) {
             if (!isPointVisible(player.x, player.y, hole.x, hole.y, lines, vertices)) continue;
-
             float dxTo = hole.x - player.x;
             float dyTo = hole.y - player.y;
             float angleToPoint = atan2(dyTo, dxTo);
             float angleDiff = angleToPoint - player.angle;
             while (angleDiff < -M_PI) angleDiff += 2*M_PI;
             while (angleDiff > M_PI) angleDiff -= 2*M_PI;
-
-            // Определяем экранный x
             float screenX = (angleDiff / (FOV/2)) * (WINDOW_WIDTH/2) + WINDOW_WIDTH/2;
             if (screenX < 0 || screenX >= WINDOW_WIDTH) continue;
-
             float dist = std::sqrt(dxTo*dxTo + dyTo*dyTo);
             float spriteHeight = 20.0f * 200.0f / dist;
             if (spriteHeight < 4) spriteHeight = 4;
             float spriteYcenter = WINDOW_HEIGHT/2;
             float screenY = spriteYcenter - spriteHeight/2;
-
             SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
             SDL_FRect rect = {screenX - spriteHeight/2, screenY, spriteHeight, spriteHeight};
             SDL_RenderFillRect(renderer, &rect);
@@ -411,9 +537,21 @@ int main() {
         if (shootFlashFrames > 0) {
             shootFlashFrames--;
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            int flashSize = 80;
+            float flashSize = 80.0f;
             SDL_FRect flashRect = { (WINDOW_WIDTH - flashSize)/2.0f, (WINDOW_HEIGHT - flashSize)/2.0f, flashSize, flashSize };
             SDL_RenderFillRect(renderer, &flashRect);
+        }
+
+        std::string hudText;
+        if (inventory.currentWeapon == PISTOL) hudText = "PISTOL (INF)";
+        else hudText = "SHOTGUN (" + std::to_string(inventory.shotgunAmmo) + ")";
+        SDL_Surface* hudSurf = TTF_RenderText_Solid(smallFont, hudText.c_str(), 0, {255,255,255,255});
+        if (hudSurf) {
+            SDL_Texture* hudTex = SDL_CreateTextureFromSurface(renderer, hudSurf);
+            SDL_FRect hudRect = {20, 20, (float)hudSurf->w, (float)hudSurf->h};
+            SDL_RenderTexture(renderer, hudTex, NULL, &hudRect);
+            SDL_DestroyTexture(hudTex);
+            SDL_DestroySurface(hudSurf);
         }
 
         SDL_RenderPresent(renderer);
