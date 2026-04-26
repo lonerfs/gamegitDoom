@@ -27,8 +27,6 @@ file(GLOB_RECURSE GAME_SOURCES
 add_executable(game
         ${GAME_SOURCES}
         src/main.cpp
-        src/RenderThread.h
-        src/RenderThread.cpp
 )
 
 target_link_libraries(game
@@ -40,6 +38,7 @@ target_link_libraries(game
 add_executable(map_editor
         ${GAME_SOURCES}
         lib/tools/editor_main.cpp
+        lib/tools/MapToWad.cpp
 )
 
 target_link_libraries(map_editor
