@@ -30,7 +30,6 @@ struct Texture {
     std::vector<Uint32> pixelData;
 };
 
-// Функция билинейной фильтрации
 Uint32 bilinearFilter(const Texture& tex, float u, float v) {
     float fx = u * tex.width;
     float fy = v * tex.height;
@@ -87,17 +86,14 @@ Uint32 bilinearFilter(const Texture& tex, float u, float v) {
 Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
     Texture tex = {nullptr, 64, 64, {}};
 
-    // Загружаем текстуру через IMG_LoadTexture (аппаратное ускорение)
     tex.texture = IMG_LoadTexture(renderer, filename);
 
     if (tex.texture) {
-        // В SDL3 используем SDL_GetTextureSize
         float w, h;
         SDL_GetTextureSize(tex.texture, &w, &h);
         tex.width = (int)w;
         tex.height = (int)h;
 
-        // Для билинейной фильтрации загружаем пиксели для CPU доступа
         tex.pixelData.resize(tex.width * tex.height);
 
         SDL_Surface* surf = IMG_Load(filename);
@@ -110,7 +106,6 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
             SDL_DestroySurface(surf);
         }
 
-        // Включаем линейную фильтрацию на GPU
         SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_LINEAR);
 
         std::cout << "Loaded texture: " << filename << " (" << tex.width << "x" << tex.height << ")" << std::endl;
@@ -136,13 +131,11 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
     return tex;
 }
 
-// Отрисовка стены с оптимизацией для GPU
 void drawWallColumn(SDL_Renderer* renderer, int x, int top, int bottom, int texX, const Texture& tex, float distance) {
     if (top >= bottom) return;
 
     int height = bottom - top;
 
-    // Используем полосы по 8 пикселей для уменьшения числа вызовов отрисовки
     const int STRIP_SIZE = 8;
     for (int y = top; y < bottom; y += STRIP_SIZE) {
         int yEnd = std::min(y + STRIP_SIZE, bottom);
@@ -159,7 +152,7 @@ void drawWallColumn(SDL_Renderer* renderer, int x, int top, int bottom, int texX
             g = (filteredColor >> 8) & 0xFF;
             b = filteredColor & 0xFF;
         } else {
-            r = 220; g = 180; b = 0; // Желтый
+            r = 220; g = 180; b = 0;
         }
 
         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
