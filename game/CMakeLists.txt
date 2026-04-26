@@ -4,6 +4,7 @@ project(game)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+<<<<<<< Updated upstream
 # Пути к библиотекам
 set(SDL3_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3-3.4.2/x86_64-w64-mingw32")
 set(SDL3_TTF_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3_ttf-3.2.2/x86_64-w64-mingw32")
@@ -71,3 +72,18 @@ add_custom_command(TARGET map_editor POST_BUILD
         ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll
         $<TARGET_FILE_DIR:map_editor>/SDL3_image.dll
 )
+=======
+find_package(SDL3 REQUIRED)
+
+set(SOURCES
+        src/main.cpp
+        src/WadLoader.cpp
+        src/DoomMap.cpp
+        src/drawing_maps.cpp
+)
+
+add_executable(game ${SOURCES})
+
+target_link_libraries(game PRIVATE SDL3::SDL3)
+target_include_directories(game PRIVATE include)
+>>>>>>> Stashed changes
