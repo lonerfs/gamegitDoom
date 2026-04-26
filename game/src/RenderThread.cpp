@@ -54,7 +54,6 @@ ThreadPool::~ThreadPool() {
     for (auto& worker : workers) worker.join();
 }
 
-// Оптимизированная версия для GPU - расчеты на CPU, отрисовка на GPU
 std::vector<ColumnResult> renderColumnsRange(
     int startX, int endX,
     const Player& player,
@@ -80,7 +79,6 @@ std::vector<ColumnResult> renderColumnsRange(
         float hitU = 0;
         float hitX = 0, hitY = 0;
 
-        // Поиск ближайшей стены (CPU-intensive, но многопоточно)
         for (size_t i = 0; i < lines.size(); ++i) {
             if (lines[i].startVertex >= vertices.size() || lines[i].endVertex >= vertices.size()) continue;
             const Vertex& v1 = vertices[lines[i].startVertex];
@@ -105,7 +103,6 @@ std::vector<ColumnResult> renderColumnsRange(
         col.linedefIndex = hitLinedef;
 
         if (hitLinedef != -1 && closestDist < 1000000.0f) {
-            // Без коррекции рыбьего глаза
             float distForHeight = closestDist;
             if (distForHeight < 0.1f) distForHeight = 0.1f;
 
