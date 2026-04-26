@@ -55,7 +55,6 @@ std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
     std::vector<MapInfo> maps;
     const auto& lumps = wad.getLumps();
 
-    // Сначала добавляем ТВОИ карты (txt)
     if (std::ifstream("level1.txt").good()) {
         maps.push_back({"MY LEVEL 1", "txt", true});
     }
@@ -66,7 +65,6 @@ std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
         maps.push_back({"MY LEVEL 3", "txt", true});
     }
 
-    // Потом WAD карты
     for (const auto& lump : lumps) {
         std::string name(lump.name, 8);
         name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
@@ -95,10 +93,9 @@ void listAllLumps(const WadLoader& wad) {
     std::cout << "================" << std::endl;
 }
 
-// Загрузка PNG текстуры из папки textures/
+// Загрузка PNG текстуры из папки textures/ (рядом с exe)
 SDL_Texture* loadTexture(SDL_Renderer* renderer, const std::string& path) {
-    // Строим путь к файлу в папке textures/
-    std::string fullPath = "textures/" + path;
+    std::string fullPath = "textures/" + path;   // Теперь путь универсальный
 
     std::cout << "Пытаюсь загрузить: " << fullPath << std::endl;
 
@@ -156,6 +153,12 @@ int main() {
     std::string wadFile = "freedoom1.wad";
     if (!wad.load(wadFile)) {
         std::cerr << "Не удалось загрузить " << wadFile << std::endl;
+        TTF_CloseFont(font);
+        if (smallFont != font) TTF_CloseFont(smallFont);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
         return 1;
     }
 
@@ -334,7 +337,6 @@ int main() {
             float scaleX = 700.0f / (maxX - minX);
             float scaleY = 600.0f / (maxY - minY);
             float scale = std::min(scaleX, scaleY) * 0.8f;
-
             float offsetX = 460 + (700 - (maxX - minX) * scale) / 2 - minX * scale;
             float offsetY = 180 + (600 - (maxY - minY) * scale) / 2 + maxY * scale;
 
@@ -438,7 +440,6 @@ int main() {
     std::cout << "Границы карты: X[" << minX << "," << maxX << "] Y[" << minY << "," << maxY << "]" << std::endl;
     std::cout << "Управление: WASD - движение, стрелки - поворот" << std::endl;
 
-    // ЗАГРУЖАЕМ ТЕКСТУРЫ ДЛЯ ТВОИХ КАРТ ИЗ ПАПКИ textures/
     SDL_Texture* floorTex = nullptr;
     SDL_Texture* ceilingTex = nullptr;
     SDL_Texture* wallTex = nullptr;
@@ -502,7 +503,6 @@ int main() {
             dy += cos(player.angle) * moveSpeed;
         }
 
-        // Временное отключение коллизий для теста
         player.x += dx;
         player.y += dy;
 
