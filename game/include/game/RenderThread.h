@@ -8,6 +8,7 @@
 #include <queue>
 #include <atomic>
 #include <memory>
+#include <future>
 #include "game/DoomMap.h"
 #include "game/Player.h"
 
@@ -28,8 +29,11 @@ struct ColumnResult {
     int wallBottom;
     float hitU;
     float distance;
+    int sector;
+    int linedefIndex;  // добавлено
+    float hitX;        // добавлено
+    float hitY;        // добавлено
 };
-
 
 class ThreadPool {
 public:
@@ -37,7 +41,14 @@ public:
     ~ThreadPool();
 
     template<typename F>
-    void enqueue(F&& f);
+    void enqueue(F&& f) {
+        auto taskPtr = std::make_shared<std::packaged_task<void()>>(std::forward<F>(f));
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            tasks.emplace([taskPtr]() { (*taskPtr)(); });
+        }
+        condition.notify_one();
+    }
 
 private:
     std::vector<std::thread> workers;
@@ -47,11 +58,12 @@ private:
     std::atomic<bool> stop;
 };
 
-
 std::vector<ColumnResult> renderColumnsRange(
     int startX, int endX,
     const Player& player,
     const std::vector<Linedef>& lines,
     const std::vector<Vertex>& vertices,
-    int windowWidth, int windowHeight
+    const std::vector<Sidedef>& sidedefs,
+    const std::vector<Sector>& sectors,
+    int screenWidth, int screenHeight
 );
