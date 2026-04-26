@@ -298,19 +298,15 @@ int main() {
     SDL_Window* window = SDL_CreateWindow("Doom Clone", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if (!window) { TTF_Quit(); SDL_Quit(); return 1; }
 
-    // Создаем рендерер с аппаратным ускорением
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) { SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
 
-    // Включаем вертикальную синхронизацию
     SDL_SetRenderVSync(renderer, 1);
 
-    // Получаем имя драйвера рендерера (видеокарта)
     const char* driverName = SDL_GetRendererName(renderer);
     std::cout << "=== GPU RENDERER INFO ===" << std::endl;
     std::cout << "Driver: " << (driverName ? driverName : "Unknown") << std::endl;
-
-    // Получаем информацию о текстурах
+    
     SDL_Texture* testTex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, 1, 1);
     if (testTex) {
         float maxW, maxH;
