@@ -8,9 +8,10 @@
 #include <cstring>
 #include <chrono>
 #include <future>
+#include <map>
 #include <SDL3/SDL.h>
-#include <SDL3_ttf/SDL_ttf.h>
 #include <SDL3_image/SDL_image.h>
+#include <SDL3_ttf/SDL_ttf.h>
 #include "game/DoomMap.h"
 #include "game/Player.h"
 #include "game/WadLoader.h"
@@ -22,39 +23,148 @@ struct BulletHole {
     int lifetime;
 };
 
-SDL_Texture* loadTexture(SDL_Renderer* renderer, const std::string& path) {
-    std::string fullPath = "textures/" + path;
-    SDL_Surface* surf = IMG_Load(fullPath.c_str());
-    if (!surf) return nullptr;
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_DestroySurface(surf);
+struct Texture {
+    SDL_Texture* texture;
+    int width;
+    int height;
+    std::vector<Uint32> pixelData;
+};
+
+// Функция билинейной фильтрации
+Uint32 bilinearFilter(const Texture& tex, float u, float v) {
+    float fx = u * tex.width;
+    float fy = v * tex.height;
+
+    int x0 = (int)fx;
+    int y0 = (int)fy;
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= tex.width) x1 = tex.width - 1;
+    if (y1 >= tex.height) y1 = tex.height - 1;
+
+    float dx = fx - x0;
+    float dy = fy - y0;
+
+    Uint32 p00 = tex.pixelData[y0 * tex.width + x0];
+    Uint32 p10 = tex.pixelData[y0 * tex.width + x1];
+    Uint32 p01 = tex.pixelData[y1 * tex.width + x0];
+    Uint32 p11 = tex.pixelData[y1 * tex.width + x1];
+
+    float r00 = (p00 >> 16) & 0xFF;
+    float g00 = (p00 >> 8) & 0xFF;
+    float b00 = p00 & 0xFF;
+
+    float r10 = (p10 >> 16) & 0xFF;
+    float g10 = (p10 >> 8) & 0xFF;
+    float b10 = p10 & 0xFF;
+
+    float r01 = (p01 >> 16) & 0xFF;
+    float g01 = (p01 >> 8) & 0xFF;
+    float b01 = p01 & 0xFF;
+
+    float r11 = (p11 >> 16) & 0xFF;
+    float g11 = (p11 >> 8) & 0xFF;
+    float b11 = p11 & 0xFF;
+
+    float r0 = r00 * (1 - dx) + r10 * dx;
+    float g0 = g00 * (1 - dx) + g10 * dx;
+    float b0 = b00 * (1 - dx) + b10 * dx;
+
+    float r1 = r01 * (1 - dx) + r11 * dx;
+    float g1 = g01 * (1 - dx) + g11 * dx;
+    float b1 = b01 * (1 - dx) + b11 * dx;
+
+    float r = r0 * (1 - dy) + r1 * dy;
+    float g = g0 * (1 - dy) + g1 * dy;
+    float b = b0 * (1 - dy) + b1 * dy;
+
+    return (0xFF << 24) | ((int)r << 16) | ((int)g << 8) | (int)b;
+}
+
+Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
+    Texture tex = {nullptr, 64, 64, {}};
+
+    // Загружаем текстуру через IMG_LoadTexture (аппаратное ускорение)
+    tex.texture = IMG_LoadTexture(renderer, filename);
+
+    if (tex.texture) {
+        // В SDL3 используем SDL_GetTextureSize
+        float w, h;
+        SDL_GetTextureSize(tex.texture, &w, &h);
+        tex.width = (int)w;
+        tex.height = (int)h;
+
+        // Для билинейной фильтрации загружаем пиксели для CPU доступа
+        tex.pixelData.resize(tex.width * tex.height);
+
+        SDL_Surface* surf = IMG_Load(filename);
+        if (surf) {
+            SDL_Surface* converted = SDL_ConvertSurface(surf, SDL_PIXELFORMAT_RGBA32);
+            if (converted) {
+                memcpy(tex.pixelData.data(), converted->pixels, tex.width * tex.height * 4);
+                SDL_DestroySurface(converted);
+            }
+            SDL_DestroySurface(surf);
+        }
+
+        // Включаем линейную фильтрацию на GPU
+        SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_LINEAR);
+
+        std::cout << "Loaded texture: " << filename << " (" << tex.width << "x" << tex.height << ")" << std::endl;
+    } else {
+        std::cerr << "Failed to load texture: " << filename << std::endl;
+        // Желтая текстура-заглушка
+        SDL_Surface* dummy = SDL_CreateSurface(64, 64, SDL_PIXELFORMAT_RGBA32);
+        tex.pixelData.resize(64 * 64);
+        Uint32* pixels = (Uint32*)dummy->pixels;
+        for (int y = 0; y < 64; y++) {
+            for (int x = 0; x < 64; x++) {
+                Uint8 intensity = ((x/8 + y/8) % 2) ? 255 : 180;
+                Uint32 color = (0xFF << 24) | (intensity << 16) | (intensity << 8) | 0;
+                pixels[y * 64 + x] = color;
+                tex.pixelData[y * 64 + x] = color;
+            }
+        }
+        tex.texture = SDL_CreateTextureFromSurface(renderer, dummy);
+        SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_LINEAR);
+        tex.width = tex.height = 64;
+        SDL_DestroySurface(dummy);
+    }
     return tex;
 }
 
-SDL_Texture* createFallbackTexture(SDL_Renderer* renderer, int w, int h) {
-    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
-    if (!surf) return nullptr;
-    const SDL_PixelFormatDetails* fmt = SDL_GetPixelFormatDetails(surf->format);
-    Uint32 brick = SDL_MapRGB(fmt, NULL, 180, 80, 60);
-    Uint32 mortar = SDL_MapRGB(fmt, NULL, 100, 100, 100);
-    SDL_FillSurfaceRect(surf, NULL, mortar);
-    int brickW = w / 8;
-    int brickH = h / 6;
-    if (brickW < 2) brickW = 2;
-    if (brickH < 2) brickH = 2;
-    for (int row = 0; row < 6; ++row) {
-        int y = row * brickH;
-        int offset = (row % 2 == 0) ? 0 : brickW / 2;
-        for (int col = 0; col < 12; ++col) {
-            int x = offset + col * brickW;
-            if (x + brickW > w) break;
-            SDL_Rect rect = {x, y, brickW, brickH-1};
-            SDL_FillSurfaceRect(surf, &rect, brick);
+// Отрисовка стены с оптимизацией для GPU
+void drawWallColumn(SDL_Renderer* renderer, int x, int top, int bottom, int texX, const Texture& tex, float distance) {
+    if (top >= bottom) return;
+
+    int height = bottom - top;
+
+    // Используем полосы по 8 пикселей для уменьшения числа вызовов отрисовки
+    const int STRIP_SIZE = 8;
+    for (int y = top; y < bottom; y += STRIP_SIZE) {
+        int yEnd = std::min(y + STRIP_SIZE, bottom);
+        float t = (float)(y - top) / height;
+
+        float v = t;
+        float u = (float)texX / tex.width;
+
+        Uint8 r, g, b;
+
+        if (!tex.pixelData.empty() && texX >= 0 && texX < tex.width) {
+            Uint32 filteredColor = bilinearFilter(tex, u, v);
+            r = (filteredColor >> 16) & 0xFF;
+            g = (filteredColor >> 8) & 0xFF;
+            b = filteredColor & 0xFF;
+        } else {
+            r = 220; g = 180; b = 0; // Желтый
         }
+
+        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+        SDL_RenderLine(renderer, x, y, x, yEnd - 1);
     }
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_DestroySurface(surf);
-    return tex;
 }
 
 HitResult shootRay(float x, float y, float angle, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
@@ -82,22 +192,29 @@ void shootShotgun(float x, float y, float angle, const std::vector<Linedef>& lin
         std::cout << "Out of shotgun ammo!" << std::endl;
         return;
     }
-    const int PELLETS = 5;
-    const float SPREAD = 0.1f;
+
+    const int PELLETS = 3;
+    const float SPREAD = 0.08f;
+
     for (int i = 0; i < PELLETS; ++i) {
-        float spreadAngle = angle + ((float)rand() / RAND_MAX - 0.5f) * SPREAD;
+        float offset = ((float)i / (PELLETS - 1) - 0.5f) * SPREAD;
+        float spreadAngle = angle + offset;
+
         HitResult hit = shootRay(x, y, spreadAngle, lines, vertices);
         if (hit.hit) {
             BulletHole hole;
             hole.x = hit.hitX;
             hole.y = hit.hitY;
             hole.distance = hit.distance;
-            hole.lifetime = 300;
+            hole.lifetime = 150;
             bulletHoles.push_back(hole);
-            if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
         }
     }
     ammo--;
+
+    if (bulletHoles.size() > 50) {
+        bulletHoles.erase(bulletHoles.begin(), bulletHoles.begin() + 10);
+    }
 }
 
 bool isPointVisible(float px, float py, float tx, float ty, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
@@ -105,12 +222,10 @@ bool isPointVisible(float px, float py, float tx, float ty, const std::vector<Li
     float dy = ty - py;
     float dist = std::sqrt(dx*dx + dy*dy);
     if (dist < 0.1f) return true;
-    float step = 0.1f;
+    float step = 0.2f;
     float nx = dx / dist;
     float ny = dy / dist;
     for (float d = 0; d < dist; d += step) {
-        float cx = px + nx * d;
-        float cy = py + ny * d;
         for (const auto& line : lines) {
             if (line.startVertex >= vertices.size() || line.endVertex >= vertices.size()) continue;
             const Vertex& v1 = vertices[line.startVertex];
@@ -133,9 +248,11 @@ struct MapInfo {
 std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
     std::vector<MapInfo> maps;
     const auto& lumps = wad.getLumps();
-    if (std::ifstream("level1.txt").good()) maps.push_back({"MY LEVEL 1", "txt", true});
-    if (std::ifstream("level2.txt").good()) maps.push_back({"MY LEVEL 2", "txt", true});
-    if (std::ifstream("level3.txt").good()) maps.push_back({"MY LEVEL 3", "txt", true});
+
+    if (std::ifstream("level1.txt").good()) maps.push_back({"★ MY LEVEL 1", "txt", true});
+    if (std::ifstream("level2.txt").good()) maps.push_back({"★ MY LEVEL 2", "txt", true});
+    if (std::ifstream("level3.txt").good()) maps.push_back({"★ MY LEVEL 3", "txt", true});
+
     for (const auto& lump : lumps) {
         std::string name(lump.name, 8);
         name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
@@ -180,12 +297,34 @@ int main() {
 
     SDL_Window* window = SDL_CreateWindow("Doom Clone", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if (!window) { TTF_Quit(); SDL_Quit(); return 1; }
+
+    // Создаем рендерер с аппаратным ускорением
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) { SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
 
+    // Включаем вертикальную синхронизацию
+    SDL_SetRenderVSync(renderer, 1);
+
+    // Получаем имя драйвера рендерера (видеокарта)
+    const char* driverName = SDL_GetRendererName(renderer);
+    std::cout << "=== GPU RENDERER INFO ===" << std::endl;
+    std::cout << "Driver: " << (driverName ? driverName : "Unknown") << std::endl;
+
+    // Получаем информацию о текстурах
+    SDL_Texture* testTex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, 1, 1);
+    if (testTex) {
+        float maxW, maxH;
+        SDL_GetTextureSize(testTex, &maxW, &maxH);
+        std::cout << "Max texture size: " << (int)maxW << "x" << (int)maxH << std::endl;
+        SDL_DestroyTexture(testTex);
+    }
+    std::cout << "=========================" << std::endl;
+
+    Texture wallTex = loadTexture(renderer, "stena.png");
+
     WadLoader wad;
     if (!wad.load("freedoom1.wad")) {
-        std::cerr << "Warning: freedoom1.wad not loaded (custom maps only)" << std::endl;
+        std::cerr << "Warning: freedoom1.wad not loaded" << std::endl;
     } else {
         listAllLumps(wad);
     }
@@ -227,7 +366,6 @@ int main() {
             }
         }
 
-        // Отрисовка меню
         SDL_SetRenderDrawColor(renderer, 20,20,30,255);
         SDL_RenderClear(renderer);
 
@@ -251,7 +389,6 @@ int main() {
             int idx = scrollOffset+i;
             SDL_Color col = (idx==selectedMapIndex)? SDL_Color{255,200,0,255} : SDL_Color{200,200,200,255};
             std::string name = maps[idx].name;
-            if (maps[idx].isCustom) name = "★ "+name;
             SDL_Surface* surf = TTF_RenderText_Solid(smallFont, name.c_str(), 0, col);
             if (surf) {
                 SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
@@ -276,7 +413,6 @@ int main() {
         SDL_RenderRect(renderer, &previewPanel);
 
         std::string selName = maps[selectedMapIndex].name;
-        if (maps[selectedMapIndex].isCustom) selName = "★ "+selName;
         SDL_Surface* nameSurf = TTF_RenderText_Solid(font, selName.c_str(), 0, {255,200,0,255});
         if (nameSurf) {
             SDL_Texture* nameTex = SDL_CreateTextureFromSurface(renderer, nameSurf);
@@ -307,7 +443,7 @@ int main() {
             }
         }
 
-        SDL_Surface* instr = TTF_RenderText_Solid(smallFont, "UP/DOWN - select | ENTER - start | ★ - YOUR MAPS", 0, {150,150,150,255});
+        SDL_Surface* instr = TTF_RenderText_Solid(smallFont, "UP/DOWN - select | ENTER - start", 0, {150,150,150,255});
         if (instr) {
             SDL_Texture* ti = SDL_CreateTextureFromSurface(renderer, instr);
             SDL_FRect ir = {WINDOW_WIDTH/2.0f - instr->w/2.0f, 850, (float)instr->w, (float)instr->h};
@@ -329,38 +465,47 @@ int main() {
 
     MapInfo selected = maps[selectedMapIndex];
     DoomMap gameMap;
-    if (selected.isCustom) gameMap.loadFromTextFile("level" + std::to_string(selectedMapIndex+1) + ".txt");
-    else gameMap.loadFromWad(wad, selected.name);
+    if (selected.isCustom) {
+        std::string txtFile = "level" + std::to_string(selectedMapIndex+1) + ".txt";
+        gameMap.loadFromTextFile(txtFile);
+        std::cout << "Loading custom map: " << txtFile << std::endl;
+    } else {
+        gameMap.loadFromWad(wad, selected.name);
+        std::cout << "Loading WAD map: " << selected.name << std::endl;
+    }
 
     auto vertices = gameMap.getVertices();
     auto lines = gameMap.getLinedefs();
+    auto sidedefs = gameMap.getSidedefs();
+    auto sectors = gameMap.getSectors();
+
     if (vertices.empty() || lines.empty()) return 1;
 
     Player player;
-    player.x = 112.0f;
-    player.y = -64.0f;
+    player.x = 160.0f;
+    player.y = 0.0f;
     player.angle = 0.0f;
-    player.speed = 150.0f;
+    player.speed = 200.0f;
 
-    SDL_Texture* wallTex = loadTexture(renderer, "stena.png");
-    if (!wallTex) wallTex = createFallbackTexture(renderer, 64, 64);
-    SDL_Texture* floorTex = loadTexture(renderer, "pol.png");
-    if (!floorTex) floorTex = createFallbackTexture(renderer, 64, 64);
-    SDL_Texture* ceilingTex = loadTexture(renderer, "potolok.png");
-    if (!ceilingTex) ceilingTex = createFallbackTexture(renderer, 64, 64);
-
-    const float FOV = M_PI/2.0f;
+    const float FOV = 60.0f * M_PI / 180.0f;
     Uint64 lastTime = SDL_GetTicks();
-
     Uint64 lastShootTime = 0;
     const Uint64 SHOOT_DELAY_MS = 300;
     int shootFlashFrames = 0;
     std::vector<BulletHole> bulletHoles;
     Inventory inventory;
 
+    int frameCount = 0;
+    Uint64 lastFpsTime = SDL_GetTicks();
+    int currentFPS = 0;
+
     unsigned int numThreads = std::thread::hardware_concurrency();
     if (numThreads == 0) numThreads = 4;
     ThreadPool threadPool(numThreads);
+    std::cout << "Using " << numThreads << " threads for raycasting" << std::endl;
+
+    int RENDER_SCALE = 1;
+    int RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
 
     while (running) {
         Uint64 now = SDL_GetTicks();
@@ -368,40 +513,58 @@ int main() {
         lastTime = now;
         if (dt > 0.033f) dt = 0.033f;
 
+        frameCount++;
+        if (now - lastFpsTime >= 1000) {
+            currentFPS = frameCount;
+            frameCount = 0;
+            lastFpsTime = now;
+        }
+
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN) {
                 if (event.key.scancode == SDL_SCANCODE_1) {
                     inventory.currentWeapon = PISTOL;
-                    std::cout << "Switched to Pistol" << std::endl;
                 }
                 if (event.key.scancode == SDL_SCANCODE_2) {
                     inventory.currentWeapon = SHOTGUN;
-                    std::cout << "Switched to Shotgun, ammo: " << inventory.shotgunAmmo << std::endl;
+                }
+                if (event.key.scancode == SDL_SCANCODE_F1) {
+                    RENDER_SCALE = 1;
+                    RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
+                    std::cout << "Quality: High" << std::endl;
+                }
+                if (event.key.scancode == SDL_SCANCODE_F2) {
+                    RENDER_SCALE = 2;
+                    RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
+                    std::cout << "Quality: Medium" << std::endl;
+                }
+                if (event.key.scancode == SDL_SCANCODE_F3) {
+                    RENDER_SCALE = 3;
+                    RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
+                    std::cout << "Quality: Low" << std::endl;
                 }
             }
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                 if (now - lastShootTime >= SHOOT_DELAY_MS) {
                     lastShootTime = now;
-                    shootFlashFrames = 5;
+                    shootFlashFrames = 3;
                     if (inventory.currentWeapon == PISTOL) {
                         HitResult shot = shootRay(player.x, player.y, player.angle, lines, vertices);
                         if (shot.hit) {
-                            std::cout << "Pistol shot at distance " << shot.distance << std::endl;
                             BulletHole hole;
                             hole.x = shot.hitX;
                             hole.y = shot.hitY;
                             hole.distance = shot.distance;
-                            hole.lifetime = 300;
+                            hole.lifetime = 150;
                             bulletHoles.push_back(hole);
-                            if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
+                            if (bulletHoles.size() > 50) bulletHoles.erase(bulletHoles.begin());
                         }
                     } else if (inventory.currentWeapon == SHOTGUN) {
                         if (inventory.shotgunAmmo <= 0) {
                             std::cout << "No shotgun ammo!" << std::endl;
                         } else {
-                            std::cout << "Shotgun fired!" << std::endl;
                             shootShotgun(player.x, player.y, player.angle, lines, vertices, bulletHoles, inventory.shotgunAmmo);
                         }
                     }
@@ -411,7 +574,7 @@ int main() {
 
         const bool* keys = SDL_GetKeyboardState(nullptr);
         float move = player.speed * dt;
-        float turn = 2.0f * dt;
+        float turn = 3.0f * dt;
         float dx = 0, dy = 0;
         if (keys[SDL_SCANCODE_W]) { dx += cos(player.angle)*move; dy += sin(player.angle)*move; }
         if (keys[SDL_SCANCODE_S]) { dx -= cos(player.angle)*move; dy -= sin(player.angle)*move; }
@@ -434,14 +597,22 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
 
-        int chunk = WINDOW_WIDTH / numThreads;
+        SDL_SetRenderDrawColor(renderer, 100, 70, 40, 255);
+        SDL_FRect floorRect = {0, (float)WINDOW_HEIGHT/2, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT/2};
+        SDL_RenderFillRect(renderer, &floorRect);
+
+        SDL_SetRenderDrawColor(renderer, 180, 180, 200, 255);
+        SDL_FRect ceilingRect = {0, 0, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT/2};
+        SDL_RenderFillRect(renderer, &ceilingRect);
+
+        int chunk = RENDER_WIDTH / numThreads;
         std::vector<std::future<std::vector<ColumnResult>>> futures;
         for (unsigned int i = 0; i < numThreads; ++i) {
             int startX = i * chunk;
-            int endX = (i == numThreads - 1) ? WINDOW_WIDTH : (i + 1) * chunk;
+            int endX = (i == numThreads - 1) ? RENDER_WIDTH : (i + 1) * chunk;
             std::packaged_task<std::vector<ColumnResult>()> task(
-                [startX, endX, &player, &lines, &vertices, WINDOW_WIDTH, WINDOW_HEIGHT]() {
-                    return renderColumnsRange(startX, endX, player, lines, vertices, WINDOW_WIDTH, WINDOW_HEIGHT);
+                [startX, endX, &player, &lines, &vertices, &sidedefs, &sectors, RENDER_WIDTH, WINDOW_HEIGHT]() {
+                    return renderColumnsRange(startX, endX, player, lines, vertices, sidedefs, sectors, RENDER_WIDTH, WINDOW_HEIGHT);
                 });
             futures.push_back(task.get_future());
             threadPool.enqueue(std::move(task));
@@ -455,25 +626,16 @@ int main() {
         std::sort(allColumns.begin(), allColumns.end(),
                   [](const ColumnResult& a, const ColumnResult& b) { return a.x < b.x; });
 
-        float texW, texH;
-        SDL_GetTextureSize(wallTex, &texW, &texH);
         for (const auto& col : allColumns) {
             if (col.wallTop >= col.wallBottom) continue;
-            int texX = (int)(col.hitU * texW) % (int)texW;
-            if (texX < 0) texX += (int)texW;
-            SDL_FRect srcRect = { (float)texX, 0.0f, 1.0f, texH };
-            SDL_FRect dstRect = { (float)col.x, (float)col.wallTop, 1.0f, (float)(col.wallBottom - col.wallTop) };
-            SDL_RenderTexture(renderer, wallTex, &srcRect, &dstRect);
-        }
+            int texX = (int)(col.hitU * wallTex.width) % wallTex.width;
+            if (texX < 0) texX += wallTex.width;
 
-        SDL_SetRenderDrawColor(renderer, 60, 30, 15, 255);
-        SDL_FRect floorRect = {0, (float)WINDOW_HEIGHT/2, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT/2};
-        SDL_RenderFillRect(renderer, &floorRect);
-        for (int y = 0; y < WINDOW_HEIGHT/2; ++y) {
-            float t = (float)(y) / (WINDOW_HEIGHT/2);
-            int bright = 40 + (int)(t * 60);
-            SDL_SetRenderDrawColor(renderer, bright, bright, bright, 255);
-            SDL_RenderLine(renderer, 0, y, WINDOW_WIDTH, y);
+            int screenX = col.x * RENDER_SCALE;
+
+            for (int w = 0; w < RENDER_SCALE; w++) {
+                drawWallColumn(renderer, screenX + w, col.wallTop, col.wallBottom, texX, wallTex, col.distance);
+            }
         }
 
         for (const auto& hole : bulletHoles) {
@@ -487,10 +649,10 @@ int main() {
             float screenX = (angleDiff / (FOV/2)) * (WINDOW_WIDTH/2) + WINDOW_WIDTH/2;
             if (screenX < 0 || screenX >= WINDOW_WIDTH) continue;
             float dist = std::sqrt(dxTo*dxTo + dyTo*dyTo);
-            float spriteHeight = 20.0f * 200.0f / dist;
+            float spriteHeight = 16.0f * 200.0f / dist;
             if (spriteHeight < 4) spriteHeight = 4;
             float screenY = WINDOW_HEIGHT/2 - spriteHeight/2;
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
             SDL_FRect rect = {screenX - spriteHeight/2, screenY, spriteHeight, spriteHeight};
             SDL_RenderFillRect(renderer, &rect);
         }
@@ -498,7 +660,7 @@ int main() {
         if (shootFlashFrames > 0) {
             shootFlashFrames--;
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            float flashSize = 80.0f;
+            float flashSize = 60.0f;
             SDL_FRect flashRect = { (WINDOW_WIDTH - flashSize)/2.0f, (WINDOW_HEIGHT - flashSize)/2.0f, flashSize, flashSize };
             SDL_RenderFillRect(renderer, &flashRect);
         }
@@ -506,6 +668,14 @@ int main() {
         std::string hudText;
         if (inventory.currentWeapon == PISTOL) hudText = "PISTOL (INF)";
         else hudText = "SHOTGUN (" + std::to_string(inventory.shotgunAmmo) + ")";
+        hudText += "  FPS: " + std::to_string(currentFPS);
+
+        std::string qualityText;
+        if (RENDER_SCALE == 1) qualityText = "High";
+        else if (RENDER_SCALE == 2) qualityText = "Med";
+        else qualityText = "Low";
+        hudText += "  Quality: " + qualityText;
+
         SDL_Surface* hudSurf = TTF_RenderText_Solid(smallFont, hudText.c_str(), 0, {255,255,255,255});
         if (hudSurf) {
             SDL_Texture* hudTex = SDL_CreateTextureFromSurface(renderer, hudSurf);
@@ -516,12 +686,10 @@ int main() {
         }
 
         SDL_RenderPresent(renderer);
-        SDL_Delay(10);
+        SDL_Delay(5);
     }
 
-    SDL_DestroyTexture(wallTex);
-    SDL_DestroyTexture(floorTex);
-    SDL_DestroyTexture(ceilingTex);
+    SDL_DestroyTexture(wallTex.texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_CloseFont(font);
