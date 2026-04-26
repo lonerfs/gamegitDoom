@@ -22,7 +22,7 @@ file(GLOB_RECURSE GAME_SOURCES
 )
 
 # game
-add_executable(game ${GAME_SOURCES} src/main.cpp)
+add_executable(game ${GAME_SOURCES} src/main.cpp src/RenderThread.cpp)
 
 target_link_libraries(game
         ${SDL3_BASE}/lib/libSDL3.dll.a
@@ -37,7 +37,6 @@ add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/lib/textures $<TARGET_FILE_DIR:game>/textures
 )
 
-# map_editor
 add_executable(map_editor ${GAME_SOURCES} lib/tools/editor_main.cpp lib/tools/MapToWad.cpp)
 
 target_link_libraries(map_editor

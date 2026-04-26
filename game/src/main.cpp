@@ -6,12 +6,15 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <chrono>
+#include <future>
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <SDL3_image/SDL_image.h>
 #include "game/DoomMap.h"
 #include "game/Player.h"
 #include "game/WadLoader.h"
+#include "game/RenderThread.h"
 
 struct BulletHole {
     float x, y;
@@ -19,33 +22,39 @@ struct BulletHole {
     int lifetime;
 };
 
-struct HitResult {
-    bool hit;
-    float distance;
-    int linedefIndex;
-    float hitX, hitY;
-    float hitU;
-};
+SDL_Texture* loadTexture(SDL_Renderer* renderer, const std::string& path) {
+    std::string fullPath = "textures/" + path;
+    SDL_Surface* surf = IMG_Load(fullPath.c_str());
+    if (!surf) return nullptr;
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_DestroySurface(surf);
+    return tex;
+}
 
-HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
-                              float x1, float y1, float x2, float y2) {
-    HitResult result = {false, 0, -1, 0, 0, 0};
-    float vx = x2 - x1;
-    float vy = y2 - y1;
-    float wx = x0 - x1;
-    float wy = y0 - y1;
-    float det = dx * vy - dy * vx;
-    if (std::abs(det) < 1e-6f) return result;
-    float t = (vx * wy - vy * wx) / det;
-    float u = (dx * wy - dy * wx) / det;
-    if (t > 0 && u >= 0 && u <= 1) {
-        result.hit = true;
-        result.distance = t * std::sqrt(dx*dx + dy*dy);
-        result.hitX = x0 + t * dx;
-        result.hitY = y0 + t * dy;
-        result.hitU = u;
+SDL_Texture* createFallbackTexture(SDL_Renderer* renderer, int w, int h) {
+    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
+    if (!surf) return nullptr;
+    const SDL_PixelFormatDetails* fmt = SDL_GetPixelFormatDetails(surf->format);
+    Uint32 brick = SDL_MapRGB(fmt, NULL, 180, 80, 60);
+    Uint32 mortar = SDL_MapRGB(fmt, NULL, 100, 100, 100);
+    SDL_FillSurfaceRect(surf, NULL, mortar);
+    int brickW = w / 8;
+    int brickH = h / 6;
+    if (brickW < 2) brickW = 2;
+    if (brickH < 2) brickH = 2;
+    for (int row = 0; row < 6; ++row) {
+        int y = row * brickH;
+        int offset = (row % 2 == 0) ? 0 : brickW / 2;
+        for (int col = 0; col < 12; ++col) {
+            int x = offset + col * brickW;
+            if (x + brickW > w) break;
+            SDL_Rect rect = {x, y, brickW, brickH-1};
+            SDL_FillSurfaceRect(surf, &rect, brick);
+        }
     }
-    return result;
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_DestroySurface(surf);
+    return tex;
 }
 
 HitResult shootRay(float x, float y, float angle, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
@@ -115,44 +124,6 @@ bool isPointVisible(float px, float py, float tx, float ty, const std::vector<Li
     return true;
 }
 
-SDL_Texture* loadTexture(SDL_Renderer* renderer, const std::string& path) {
-    std::string fullPath = "textures/" + path;
-    SDL_Surface* surf = IMG_Load(fullPath.c_str());
-    if (!surf) {
-        std::cerr << "Failed to load texture: " << fullPath << " - " << SDL_GetError() << std::endl;
-        return nullptr;
-    }
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_DestroySurface(surf);
-    return tex;
-}
-
-SDL_Texture* createBrickTexture(SDL_Renderer* renderer, int w, int h) {
-    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
-    if (!surf) return nullptr;
-    const SDL_PixelFormatDetails* fmt = SDL_GetPixelFormatDetails(surf->format);
-    Uint32 brick = SDL_MapRGB(fmt, NULL, 180, 80, 60);
-    Uint32 mortar = SDL_MapRGB(fmt, NULL, 100, 100, 100);
-    SDL_FillSurfaceRect(surf, NULL, mortar);
-    int brickW = w / 8;
-    int brickH = h / 6;
-    if (brickW < 2) brickW = 2;
-    if (brickH < 2) brickH = 2;
-    for (int row = 0; row < 6; ++row) {
-        int y = row * brickH;
-        int offset = (row % 2 == 0) ? 0 : brickW / 2;
-        for (int col = 0; col < 12; ++col) {
-            int x = offset + col * brickW;
-            if (x + brickW > w) break;
-            SDL_Rect rect = {x, y, brickW, brickH-1};
-            SDL_FillSurfaceRect(surf, &rect, brick);
-        }
-    }
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_DestroySurface(surf);
-    return tex;
-}
-
 struct MapInfo {
     std::string name;
     std::string source;
@@ -188,7 +159,6 @@ void listAllLumps(const WadLoader& wad) {
 }
 
 enum WeaponType { PISTOL, SHOTGUN };
-
 struct Inventory {
     WeaponType currentWeapon;
     int shotgunAmmo;
@@ -257,6 +227,7 @@ int main() {
             }
         }
 
+        // Отрисовка меню
         SDL_SetRenderDrawColor(renderer, 20,20,30,255);
         SDL_RenderClear(renderer);
 
@@ -372,7 +343,11 @@ int main() {
     player.speed = 150.0f;
 
     SDL_Texture* wallTex = loadTexture(renderer, "stena.png");
-    if (!wallTex) wallTex = createBrickTexture(renderer, 64, 64);
+    if (!wallTex) wallTex = createFallbackTexture(renderer, 64, 64);
+    SDL_Texture* floorTex = loadTexture(renderer, "pol.png");
+    if (!floorTex) floorTex = createFallbackTexture(renderer, 64, 64);
+    SDL_Texture* ceilingTex = loadTexture(renderer, "potolok.png");
+    if (!ceilingTex) ceilingTex = createFallbackTexture(renderer, 64, 64);
 
     const float FOV = M_PI/2.0f;
     Uint64 lastTime = SDL_GetTicks();
@@ -381,8 +356,11 @@ int main() {
     const Uint64 SHOOT_DELAY_MS = 300;
     int shootFlashFrames = 0;
     std::vector<BulletHole> bulletHoles;
-
     Inventory inventory;
+
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) numThreads = 4;
+    ThreadPool threadPool(numThreads);
 
     while (running) {
         Uint64 now = SDL_GetTicks();
@@ -393,7 +371,6 @@ int main() {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
-
             if (event.type == SDL_EVENT_KEY_DOWN) {
                 if (event.key.scancode == SDL_SCANCODE_1) {
                     inventory.currentWeapon = PISTOL;
@@ -404,12 +381,10 @@ int main() {
                     std::cout << "Switched to Shotgun, ammo: " << inventory.shotgunAmmo << std::endl;
                 }
             }
-
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                 if (now - lastShootTime >= SHOOT_DELAY_MS) {
                     lastShootTime = now;
                     shootFlashFrames = 5;
-
                     if (inventory.currentWeapon == PISTOL) {
                         HitResult shot = shootRay(player.x, player.y, player.angle, lines, vertices);
                         if (shot.hit) {
@@ -437,23 +412,19 @@ int main() {
         const bool* keys = SDL_GetKeyboardState(nullptr);
         float move = player.speed * dt;
         float turn = 2.0f * dt;
-
         float dx = 0, dy = 0;
         if (keys[SDL_SCANCODE_W]) { dx += cos(player.angle)*move; dy += sin(player.angle)*move; }
         if (keys[SDL_SCANCODE_S]) { dx -= cos(player.angle)*move; dy -= sin(player.angle)*move; }
         if (keys[SDL_SCANCODE_A]) { dx += sin(player.angle)*move; dy -= cos(player.angle)*move; }
         if (keys[SDL_SCANCODE_D]) { dx -= sin(player.angle)*move; dy += cos(player.angle)*move; }
-
         if (dx != 0 || dy != 0) {
             player.moveWithSliding(dx, dy, lines, vertices);
         }
-
         if (keys[SDL_SCANCODE_LEFT]) player.angle -= turn;
         if (keys[SDL_SCANCODE_RIGHT]) player.angle += turn;
         while (player.angle < 0) player.angle += 2*M_PI;
         while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
 
-        // Обновление жизни дырок
         for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
             it->lifetime--;
             if (it->lifetime <= 0) it = bulletHoles.erase(it);
@@ -463,55 +434,46 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
 
-        // Пол
+        int chunk = WINDOW_WIDTH / numThreads;
+        std::vector<std::future<std::vector<ColumnResult>>> futures;
+        for (unsigned int i = 0; i < numThreads; ++i) {
+            int startX = i * chunk;
+            int endX = (i == numThreads - 1) ? WINDOW_WIDTH : (i + 1) * chunk;
+            std::packaged_task<std::vector<ColumnResult>()> task(
+                [startX, endX, &player, &lines, &vertices, WINDOW_WIDTH, WINDOW_HEIGHT]() {
+                    return renderColumnsRange(startX, endX, player, lines, vertices, WINDOW_WIDTH, WINDOW_HEIGHT);
+                });
+            futures.push_back(task.get_future());
+            threadPool.enqueue(std::move(task));
+        }
+
+        std::vector<ColumnResult> allColumns;
+        for (auto& fut : futures) {
+            auto slice = fut.get();
+            allColumns.insert(allColumns.end(), slice.begin(), slice.end());
+        }
+        std::sort(allColumns.begin(), allColumns.end(),
+                  [](const ColumnResult& a, const ColumnResult& b) { return a.x < b.x; });
+
+        float texW, texH;
+        SDL_GetTextureSize(wallTex, &texW, &texH);
+        for (const auto& col : allColumns) {
+            if (col.wallTop >= col.wallBottom) continue;
+            int texX = (int)(col.hitU * texW) % (int)texW;
+            if (texX < 0) texX += (int)texW;
+            SDL_FRect srcRect = { (float)texX, 0.0f, 1.0f, texH };
+            SDL_FRect dstRect = { (float)col.x, (float)col.wallTop, 1.0f, (float)(col.wallBottom - col.wallTop) };
+            SDL_RenderTexture(renderer, wallTex, &srcRect, &dstRect);
+        }
+
         SDL_SetRenderDrawColor(renderer, 60, 30, 15, 255);
         SDL_FRect floorRect = {0, (float)WINDOW_HEIGHT/2, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT/2};
         SDL_RenderFillRect(renderer, &floorRect);
-
         for (int y = 0; y < WINDOW_HEIGHT/2; ++y) {
             float t = (float)(y) / (WINDOW_HEIGHT/2);
             int bright = 40 + (int)(t * 60);
             SDL_SetRenderDrawColor(renderer, bright, bright, bright, 255);
             SDL_RenderLine(renderer, 0, y, WINDOW_WIDTH, y);
-        }
-
-        for (int x = 0; x < WINDOW_WIDTH; ++x) {
-            float rayAngle = player.angle + (x - WINDOW_WIDTH/2) * FOV / WINDOW_WIDTH;
-            float dxRay = cos(rayAngle);
-            float dyRay = sin(rayAngle);
-            float closest = std::numeric_limits<float>::max();
-            int hitL = -1;
-            float hitU = 0;
-            for (size_t i = 0; i < lines.size(); ++i) {
-                if (lines[i].startVertex >= vertices.size() || lines[i].endVertex >= vertices.size()) continue;
-                Vertex& v1 = vertices[lines[i].startVertex];
-                Vertex& v2 = vertices[lines[i].endVertex];
-                HitResult h = rayLineIntersection(player.x, player.y, dxRay, dyRay, v1.x, v1.y, v2.x, v2.y);
-                if (h.hit && h.distance < closest && h.distance > 0.1f) {
-                    closest = h.distance;
-                    hitL = i;
-                    hitU = h.hitU;
-                }
-            }
-            if (hitL != -1 && closest > 0.1f) {
-                float d = closest * cos(rayAngle - player.angle);
-                if (d < 0.1f) d = 0.1f;
-                float wallHeight = (128.0f / d) * 350.0f;
-                if (wallHeight > WINDOW_HEIGHT) wallHeight = WINDOW_HEIGHT;
-                int top = (WINDOW_HEIGHT - wallHeight)/2;
-                int bot = top + wallHeight;
-                if (top < 0) top = 0;
-                if (bot > WINDOW_HEIGHT) bot = WINDOW_HEIGHT;
-
-                float w, hT;
-                SDL_GetTextureSize(wallTex, &w, &hT);
-                int texX = (int)(hitU * w);
-                if (texX < 0) texX = 0;
-                if (texX >= (int)w) texX = (int)w-1;
-                SDL_FRect src = {(float)texX, 0, 1, hT};
-                SDL_FRect dst = {(float)x, (float)top, 1, (float)(bot-top)};
-                SDL_RenderTexture(renderer, wallTex, &src, &dst);
-            }
         }
 
         for (const auto& hole : bulletHoles) {
@@ -527,8 +489,7 @@ int main() {
             float dist = std::sqrt(dxTo*dxTo + dyTo*dyTo);
             float spriteHeight = 20.0f * 200.0f / dist;
             if (spriteHeight < 4) spriteHeight = 4;
-            float spriteYcenter = WINDOW_HEIGHT/2;
-            float screenY = spriteYcenter - spriteHeight/2;
+            float screenY = WINDOW_HEIGHT/2 - spriteHeight/2;
             SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
             SDL_FRect rect = {screenX - spriteHeight/2, screenY, spriteHeight, spriteHeight};
             SDL_RenderFillRect(renderer, &rect);
@@ -559,6 +520,8 @@ int main() {
     }
 
     SDL_DestroyTexture(wallTex);
+    SDL_DestroyTexture(floorTex);
+    SDL_DestroyTexture(ceilingTex);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_CloseFont(font);
