@@ -30,11 +30,13 @@ struct ColumnResult {
     float hitU;
     float distance;
     int sector;
-    int linedefIndex;  // добавлено
-    float hitX;        // добавлено
-    float hitY;        // добавлено
+    int linedefIndex;
+    float hitX;
+    float hitY;
 };
 
+HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
+                              float x1, float y1, float x2, float y2);
 class ThreadPool {
 public:
     ThreadPool(size_t threads);

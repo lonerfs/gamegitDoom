@@ -22,6 +22,7 @@ add_executable(game
         src/RenderThread.cpp
         src/DoomMap.cpp
         src/WadLoader.cpp
+        include/game/Mob.h
 )
 
 target_link_libraries(game
