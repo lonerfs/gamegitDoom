@@ -19,6 +19,7 @@
 #include "game/RenderThread.h"
 #include "game/Mob.h"
 
+int gameState = 0;
 
 HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
                               float x1, float y1, float x2, float y2);
@@ -140,7 +141,6 @@ bool rayIntersectsMob(float x0, float y0, float dx, float dy,
     float bottom = mob.y - half;
     float top    = mob.y + half;
 
-    // Алгоритм Слаба
     float tmin = -std::numeric_limits<float>::max();
     float tmax =  std::numeric_limits<float>::max();
 
@@ -202,7 +202,7 @@ void performShot(float x, float y, float angle,
         float hitX = 0, hitY = 0;
         int hitLinedef = -1;
 
-
+        // Проверка стен
         for (size_t li = 0; li < lines.size(); ++li) {
             if (lines[li].startVertex >= vertices.size() || lines[li].endVertex >= vertices.size()) continue;
             const Vertex& v1 = vertices[lines[li].startVertex];
@@ -216,7 +216,8 @@ void performShot(float x, float y, float angle,
                 hitLinedef = li;
             }
         }
-        
+
+        // Проверка мобов
         for (auto& mob : mobs) {
             float d, ix, iy;
             if (rayIntersectsMob(x, y, dx, dy, mob, d, ix, iy)) {
@@ -492,30 +493,42 @@ int main() {
     if (vertices.empty() || lines.empty()) return 1;
 
     Player player;
-    player.x = 160.0f;
-    player.y = 0.0f;
-    player.angle = 0.0f;
-    player.speed = 200.0f;
-
     int playerHealth = 100;
     const int playerMaxHealth = 100;
-    int pistolAmmo = 999;   // много для теста
+    int pistolAmmo = 999;
     int shotgunAmmo = 10;
     int currentWeapon = 0;
 
-    // Спавн 5 мобов вокруг (128, 448)
     std::vector<Mob> mobs;
-    mobs.emplace_back(128.0f, 448.0f, ZOMBIE);
-    mobs.emplace_back(128.0f + 80, 448.0f - 60, IMP);
-    mobs.emplace_back(128.0f - 70, 448.0f + 50, DEMON);
-    mobs.emplace_back(128.0f + 50, 448.0f + 90, ZOMBIE);
-    mobs.emplace_back(128.0f - 90, 448.0f - 40, IMP);
+    std::vector<BulletHole> bulletHoles;
+
+    // Функция сброса состояния игры
+    auto resetGame = [&]() {
+        player.x = 160.0f;
+        player.y = 0.0f;
+        player.angle = 0.0f;
+        player.speed = 200.0f;
+        playerHealth = 100;
+        pistolAmmo = 999;
+        shotgunAmmo = 10;
+        currentWeapon = 0;
+        bulletHoles.clear();
+        shootFlash = 0;
+        mobs.clear();
+        mobs.emplace_back(128.0f, 448.0f, ZOMBIE);
+        mobs.emplace_back(128.0f + 80, 448.0f - 60, IMP);
+        mobs.emplace_back(128.0f - 70, 448.0f + 50, DEMON);
+        mobs.emplace_back(128.0f + 50, 448.0f + 90, ZOMBIE);
+        mobs.emplace_back(128.0f - 90, 448.0f - 40, IMP);
+        gameState = 0;
+    };
+
+    resetGame(); // начальная инициализация
 
     const float FOV = 60.0f * M_PI / 180.0f;
     Uint64 lastTime = SDL_GetTicks();
     Uint64 lastShootTime = 0;
     const Uint64 SHOOT_DELAY_MS = 300;
-    std::vector<BulletHole> bulletHoles;
 
     int frameCount = 0;
     Uint64 lastFpsTime = SDL_GetTicks();
@@ -542,17 +555,27 @@ int main() {
             lastFpsTime = now;
         }
 
+        // Обработка событий
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) running = false;
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.scancode == SDL_SCANCODE_1) currentWeapon = 0;
-                if (event.key.scancode == SDL_SCANCODE_2) currentWeapon = 1;
-                if (event.key.scancode == SDL_SCANCODE_F1) { RENDER_SCALE = 1; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: High" << std::endl; }
-                if (event.key.scancode == SDL_SCANCODE_F2) { RENDER_SCALE = 2; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Medium" << std::endl; }
-                if (event.key.scancode == SDL_SCANCODE_F3) { RENDER_SCALE = 3; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Low" << std::endl; }
+                if (event.key.scancode == SDL_SCANCODE_ESCAPE) {
+                    if (gameState == 0) gameState = 1;
+                    else if (gameState == 1) gameState = 0;
+                    else if (gameState == 2) running = false; // выход из игры (можно потом сделать возврат в меню)
+                }
+                if (event.key.scancode == SDL_SCANCODE_R && gameState == 2) {
+                    resetGame();
+                }
+                if (gameState == 0) {
+                    if (event.key.scancode == SDL_SCANCODE_1) currentWeapon = 0;
+                    if (event.key.scancode == SDL_SCANCODE_2) currentWeapon = 1;
+                    if (event.key.scancode == SDL_SCANCODE_F1) { RENDER_SCALE = 1; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: High" << std::endl; }
+                    if (event.key.scancode == SDL_SCANCODE_F2) { RENDER_SCALE = 2; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Medium" << std::endl; }
+                    if (event.key.scancode == SDL_SCANCODE_F3) { RENDER_SCALE = 3; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Low" << std::endl; }
+                }
             }
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
+            if (gameState == 0 && event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                 if (now - lastShootTime >= SHOOT_DELAY_MS) {
                     lastShootTime = now;
                     performShot(player.x, player.y, player.angle,
@@ -560,80 +583,70 @@ int main() {
                                 pistolAmmo, shotgunAmmo, currentWeapon,
                                 playerHealth, playerMaxHealth);
                     if (playerHealth <= 0) {
-                        std::cout << "GAME OVER" << std::endl;
-                        running = false;
+                        gameState = 2;
                     }
                 }
             }
         }
 
-        const bool* keys = SDL_GetKeyboardState(nullptr);
-        float move = player.speed * dt;
-        float turn = 3.0f * dt;
-        float dx = 0, dy = 0;
-        if (keys[SDL_SCANCODE_W]) { dx += cos(player.angle)*move; dy += sin(player.angle)*move; }
-        if (keys[SDL_SCANCODE_S]) { dx -= cos(player.angle)*move; dy -= sin(player.angle)*move; }
-        if (keys[SDL_SCANCODE_A]) { dx += sin(player.angle)*move; dy -= cos(player.angle)*move; }
-        if (keys[SDL_SCANCODE_D]) { dx -= sin(player.angle)*move; dy += cos(player.angle)*move; }
+        // Обновление только если игра не на паузе и не game over
+        if (gameState == 0) {
+            const bool* keys = SDL_GetKeyboardState(nullptr);
+            float move = player.speed * dt;
+            float turn = 3.0f * dt;
+            float dx = 0, dy = 0;
+            if (keys[SDL_SCANCODE_W]) { dx += cos(player.angle)*move; dy += sin(player.angle)*move; }
+            if (keys[SDL_SCANCODE_S]) { dx -= cos(player.angle)*move; dy -= sin(player.angle)*move; }
+            if (keys[SDL_SCANCODE_A]) { dx += sin(player.angle)*move; dy -= cos(player.angle)*move; }
+            if (keys[SDL_SCANCODE_D]) { dx -= sin(player.angle)*move; dy += cos(player.angle)*move; }
 
-        if (dx != 0 || dy != 0) {
-            float newX = player.x + dx;
-            float newY = player.y + dy;
-            bool collideWithMob = false;
-            const float PLAYER_RADIUS = 16.0f;
-            for (const auto& mob : mobs) {
-                float halfMob = mob.size / 2.0f;
-                float dxm = newX - mob.x;
-                float dym = newY - mob.y;
-                float dist = std::sqrt(dxm*dxm + dym*dym);
-                if (dist < PLAYER_RADIUS + halfMob) {
-                    collideWithMob = true;
+            if (dx != 0 || dy != 0) {
+                float newX = player.x + dx;
+                float newY = player.y + dy;
+                bool collideWithMob = false;
+                const float PLAYER_RADIUS = 16.0f;
+                for (const auto& mob : mobs) {
+                    float halfMob = mob.size / 2.0f;
+                    float dxm = newX - mob.x;
+                    float dym = newY - mob.y;
+                    float dist = std::sqrt(dxm*dxm + dym*dym);
+                    if (dist < PLAYER_RADIUS + halfMob) {
+                        collideWithMob = true;
+                        break;
+                    }
+                }
+                if (!collideWithMob) {
+                    player.moveWithSliding(dx, dy, lines, vertices);
+                }
+            }
+
+            if (keys[SDL_SCANCODE_LEFT]) player.angle -= turn;
+            if (keys[SDL_SCANCODE_RIGHT]) player.angle += turn;
+            while (player.angle < 0) player.angle += 2*M_PI;
+            while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
+
+            // Обновление мобов
+            for (auto& mob : mobs) {
+                mob.update(dt, player, lines, vertices);
+                mob.tryAttack(player, dt, playerHealth);
+                if (playerHealth <= 0) {
+                    gameState = 2;
                     break;
                 }
             }
-            if (!collideWithMob) {
-                player.moveWithSliding(dx, dy, lines, vertices);
+            mobs.erase(std::remove_if(mobs.begin(), mobs.end(),
+                                      [](const Mob& m) { return !m.isAlive(); }),
+                       mobs.end());
+
+            // Обновление дыр
+            for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
+                it->lifetime--;
+                if (it->lifetime <= 0) it = bulletHoles.erase(it);
+                else ++it;
             }
         }
 
-        if (keys[SDL_SCANCODE_LEFT]) player.angle -= turn;
-        if (keys[SDL_SCANCODE_RIGHT]) player.angle += turn;
-        while (player.angle < 0) player.angle += 2*M_PI;
-        while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
-
-
-        const float PLAYER_RADIUS = 16.0f;
-        for (const auto& mob : mobs) {
-            float dxm = player.x - mob.x;
-            float dym = player.y - mob.y;
-            float dist = sqrt(dxm*dxm + dym*dym);
-            float minDist = PLAYER_RADIUS + mob.size/2.0f;
-            if (dist < minDist && dist > 0.01f) {
-                float overlap = minDist - dist;
-                float angleMob = atan2(dym, dxm);
-                player.x += cos(angleMob) * overlap;
-                player.y += sin(angleMob) * overlap;
-            }
-        }
-
-        for (auto& mob : mobs) {
-            mob.update(dt, player, lines, vertices);
-            mob.tryAttack(player, dt, playerHealth);
-            if (playerHealth <= 0) {
-                running = false;
-                break;
-            }
-        }
-        mobs.erase(std::remove_if(mobs.begin(), mobs.end(),
-                                  [](const Mob& m) { return !m.isAlive(); }),
-                   mobs.end());
-
-        for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
-            it->lifetime--;
-            if (it->lifetime <= 0) it = bulletHoles.erase(it);
-            else ++it;
-        }
-
+        // Рендеринг (всегда)
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 100, 70, 40, 255);
@@ -674,7 +687,7 @@ int main() {
             }
         }
 
-
+        // Пулевые отверстия
         for (const auto& hole : bulletHoles) {
             float dxTo = hole.x - player.x;
             float dyTo = hole.y - player.y;
@@ -754,6 +767,50 @@ int main() {
             shootFlash--;
         }
 
+        // Экраны паузы и Game Over
+        if (gameState == 1) {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+            SDL_RenderFillRect(renderer, nullptr);
+            SDL_Surface* pauseSurf = TTF_RenderText_Solid(font, "PAUSED", 0, {255,255,255,255});
+            if (pauseSurf) {
+                SDL_Texture* pauseTex = SDL_CreateTextureFromSurface(renderer, pauseSurf);
+                SDL_FRect dest = {WINDOW_WIDTH/2.0f - pauseSurf->w/2.0f, WINDOW_HEIGHT/2.0f - pauseSurf->h/2.0f, (float)pauseSurf->w, (float)pauseSurf->h};
+                SDL_RenderTexture(renderer, pauseTex, NULL, &dest);
+                SDL_DestroyTexture(pauseTex);
+                SDL_DestroySurface(pauseSurf);
+            }
+            SDL_Surface* hint = TTF_RenderText_Solid(smallFont, "Press ESC to resume", 0, {200,200,200,255});
+            if (hint) {
+                SDL_Texture* hintTex = SDL_CreateTextureFromSurface(renderer, hint);
+                SDL_FRect dest = {WINDOW_WIDTH/2.0f - hint->w/2.0f, WINDOW_HEIGHT/2.0f + 40, (float)hint->w, (float)hint->h};
+                SDL_RenderTexture(renderer, hintTex, NULL, &dest);
+                SDL_DestroyTexture(hintTex);
+                SDL_DestroySurface(hint);
+            }
+        }
+
+        if (gameState == 2) {
+            SDL_SetRenderDrawColor(renderer, 100, 0, 0, 200);
+            SDL_RenderFillRect(renderer, nullptr);
+            SDL_Surface* goSurf = TTF_RenderText_Solid(font, "GAME OVER", 0, {255,100,100,255});
+            if (goSurf) {
+                SDL_Texture* goTex = SDL_CreateTextureFromSurface(renderer, goSurf);
+                SDL_FRect dest = {WINDOW_WIDTH/2.0f - goSurf->w/2.0f, WINDOW_HEIGHT/2.0f - goSurf->h, (float)goSurf->w, (float)goSurf->h};
+                SDL_RenderTexture(renderer, goTex, NULL, &dest);
+                SDL_DestroyTexture(goTex);
+                SDL_DestroySurface(goSurf);
+            }
+            SDL_Surface* hint = TTF_RenderText_Solid(smallFont, "Press R to restart, ESC to quit", 0, {255,200,200,255});
+            if (hint) {
+                SDL_Texture* hintTex = SDL_CreateTextureFromSurface(renderer, hint);
+                SDL_FRect dest = {WINDOW_WIDTH/2.0f - hint->w/2.0f, WINDOW_HEIGHT/2.0f + 50, (float)hint->w, (float)hint->h};
+                SDL_RenderTexture(renderer, hintTex, NULL, &dest);
+                SDL_DestroyTexture(hintTex);
+                SDL_DestroySurface(hint);
+            }
+        }
+
+        // HUD
         std::string hudText = "HP: " + std::to_string(playerHealth) + "  ";
         if (currentWeapon == 0) hudText += "PISTOL (" + std::to_string(pistolAmmo) + ")";
         else hudText += "SHOTGUN (" + std::to_string(shotgunAmmo) + ")";

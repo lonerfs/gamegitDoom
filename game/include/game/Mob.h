@@ -92,12 +92,12 @@ struct Mob {
         return true;
     }
 
-
     std::optional<EnemyProjectile> update(float dt, const Player& player, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
         float dx = player.x - x;
         float dy = player.y - y;
         float dist = std::sqrt(dx*dx + dy*dy);
 
+        // Пробуждение
         if (!awakened) {
             if (dist < 600.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
                 awakened = true;
@@ -105,7 +105,7 @@ struct Mob {
             }
         }
 
-
+        // Уклонение (от выстрелов)
         if (dodgeTimer > 0.0f) {
             float dodgeSpeed = speed * 1.2f;
             float dxDodge = cos(dodgeAngle) * dodgeSpeed * dt;
@@ -121,9 +121,19 @@ struct Mob {
                 if (!collidesWithWall(x, newY, halfSize, lines, vertices)) y = newY;
             }
             dodgeTimer -= dt;
+            return std::nullopt; // во время уклонения не атакуем и не двигаемся к цели
         }
 
-        else if (awakened && dist > 0.01f) {
+        // Дальность остановки преследования (зависит от типа)
+        float stopDist = 0.0f;
+        switch(type) {
+            case ZOMBIE: stopDist = 80.0f;  break; // подходит вплотную для ближнего боя
+            case IMP:    stopDist = 150.0f; break; // держит дистанцию для стрельбы
+            case DEMON:  stopDist = 150.0f; break;
+        }
+
+        // Движение к игроку, если дистанция больше stopDist
+        if (awakened && dist > stopDist && dist > 0.01f) {
             dx /= dist;
             dy /= dist;
             float move = speed * dt;
@@ -140,15 +150,15 @@ struct Mob {
             }
         }
 
+        // Перезарядка ближней атаки и стрельбы
         if (attackCooldown > 0.0f) attackCooldown -= dt;
         if (fireCooldown > 0.0f) fireCooldown -= dt;
 
-        // Дальняя атака
+        // Дальняя атака (только для IMP и DEMON)
         if (awakened && type != ZOMBIE) {
             if (dist < 500.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
                 if (fireCooldown <= 0.0f) {
                     fireCooldown = (type == IMP) ? 1.2f : 0.9f;
-                    // Создать снаряд
                     EnemyProjectile proj;
                     float dxN = dx / dist;
                     float dyN = dy / dist;
@@ -172,12 +182,13 @@ struct Mob {
         float dy = player.y - y;
         float dist = std::sqrt(dx*dx + dy*dy);
 
+        // Ближняя атака для всех мобов
         if (dist < 80.0f && attackCooldown <= 0.0f) {
             int damage = 0;
             switch(type) {
                 case ZOMBIE: damage = 5; break;
-                case IMP: damage = 10; break;
-                case DEMON: damage = 20; break;
+                case IMP:    damage = 10; break;
+                case DEMON:  damage = 20; break;
             }
             playerHealth -= damage;
             attackCooldown = 1.0f;
@@ -191,8 +202,7 @@ struct Mob {
         hp -= dmg;
         if (hp < 0) hp = 0;
         awakened = true;
-
-
+        // уклонение только если ещё жив
         if (hp > 0) {
             dodgeTimer = 0.3f;
             dodgeAngle = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
