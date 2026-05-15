@@ -302,10 +302,8 @@ bool exportToWad(void*) {
     else if (currentFileName == "level3.txt") mapName = "MAP03";
     else mapName = "MAP01";
 
-    // Добавляем текстуры в WAD
     MapToWad::addAllTexturesToWad("mymaps.wad", "textures");
 
-    // Добавляем карту в WAD
     if (MapToWad::addMapToWad("mymaps.wad", currentFileName, mapName)) {
         std::cout << "Exported " << currentFileName << " with textures to mymaps.wad as " << mapName << std::endl;
     } else {
@@ -351,7 +349,14 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
-    SDL_Window* window = SDL_CreateWindow("Doom Map Editor", 1280, 720, 0);
+    // Получаем размер экрана для полноэкранного режима
+    SDL_DisplayID display = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+    int screenWidth = mode->w;
+    int screenHeight = mode->h;
+
+    // Создаём окно на весь экран
+    SDL_Window* window = SDL_CreateWindow("Doom Map Editor", screenWidth, screenHeight, SDL_WINDOW_FULLSCREEN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
     TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 14);
     TTF_Font* smallFont = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 11);
@@ -375,12 +380,25 @@ int main(int argc, char* argv[]) {
     buttons.push_back({{750,10,80,30}, "Level 3", false, loadLevel3, nullptr});
 
     int currentThingType = 0;
-
     bool running = true;
+    bool fullscreen = true;
+
     while (running) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_EVENT_QUIT) running = false;
+
+            // Переключение полноэкранного режима по F11
+            if (ev.type == SDL_EVENT_KEY_DOWN && ev.key.scancode == SDL_SCANCODE_F11) {
+                fullscreen = !fullscreen;
+                if (fullscreen) {
+                    SDL_SetWindowFullscreen(window, true);
+                } else {
+                    SDL_SetWindowFullscreen(window, false);
+                    SDL_SetWindowSize(window, 1280, 720);
+                    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                }
+            }
 
             if (ev.type == SDL_EVENT_KEY_DOWN) {
                 if (ev.key.scancode == SDL_SCANCODE_MINUS || ev.key.scancode == SDL_SCANCODE_KP_MINUS) {
@@ -568,10 +586,14 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Получаем актуальные размеры окна (на случай смены режима)
+        int winW, winH;
+        SDL_GetWindowSize(window, &winW, &winH);
+
         SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
         SDL_RenderClear(renderer);
 
-        drawGrid(renderer, 1280, 720);
+        drawGrid(renderer, winW, winH);
 
         for (auto& btn : buttons) {
             Button_Render(renderer, &btn, font);
@@ -590,7 +612,7 @@ int main(int argc, char* argv[]) {
             modeText = "Mode: THING - Current: " + std::string(thingTypes[currentThingType].name) + " (Press TAB to change)";
         }
 
-        std::string fileText = "Current: " + currentFileName;
+        std::string fileText = "Current: " + currentFileName + " | F11 - Fullscreen";
 
         SDL_Surface* fileSurf = TTF_RenderText_Solid(smallFont, fileText.c_str(), 0, SDL_Color{200,200,200,255});
         if (fileSurf) {
