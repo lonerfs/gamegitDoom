@@ -33,6 +33,12 @@ struct HitFlash {
     int lifetime;
 };
 
+struct Pickup {
+    float x, y;
+    int type;
+    bool active;
+};
+
 struct Texture {
     SDL_Texture* texture;
     int width;
@@ -92,7 +98,6 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
             tex.pixelData.resize(tex.width * tex.height);
             memcpy(tex.pixelData.data(), converted->pixels, tex.width * tex.height * 4);
 
-            // Заменяем белый цвет на прозрачный
             for (size_t i = 0; i < tex.pixelData.size(); i++) {
                 Uint32 pixel = tex.pixelData[i];
                 Uint8 r = (pixel >> 16) & 0xFF;
@@ -167,7 +172,6 @@ bool rayIntersectsMob(float x0, float y0, float dx, float dy,
     float bottom = mob.y - half;
     float top    = mob.y + half;
 
-    // Быстрая проверка, если начало внутри
     if (x0 >= left && x0 <= right && y0 >= bottom && y0 <= top) {
         dist = 0.0f;
         hitX = x0;
@@ -219,7 +223,6 @@ void performShot(float x, float y, float angle,
         return;
     }
 
-    std::cout << "=== SHOT FIRED ===" << std::endl;
     for (int i = 0; i < pellets; ++i) {
         float offset = 0.0f;
         if (pellets > 1) {
@@ -233,7 +236,6 @@ void performShot(float x, float y, float angle,
         float hitX = 0, hitY = 0;
         int hitLinedef = -1;
 
-        // Проверяем мобов
         for (auto& mob : mobs) {
             float d, ix, iy;
             if (rayIntersectsMob(x, y, dx, dy, mob, d, ix, iy)) {
@@ -246,7 +248,6 @@ void performShot(float x, float y, float angle,
             }
         }
 
-        // Проверяем стены
         for (size_t li = 0; li < lines.size(); ++li) {
             if (lines[li].startVertex >= vertices.size() || lines[li].endVertex >= vertices.size()) continue;
             const Vertex& v1 = vertices[lines[li].startVertex];
@@ -264,24 +265,18 @@ void performShot(float x, float y, float angle,
         if (hitMob) {
             int damage = (currentWeapon == 0) ? 20 : 10;
             hitMob->takeDamage(damage);
-            std::cout << "HIT! " << (hitMob->type == ZOMBIE ? "Zombie" : "Imp")
-                      << " HP: " << hitMob->hp << std::endl;
             hitFlashes.push_back({hitX, hitY, 6});
             if (hitFlashes.size() > 50) hitFlashes.erase(hitFlashes.begin());
 
             if (!hitMob->isAlive()) {
-                std::cout << "KILLED!" << std::endl;
                 if (rand() % 100 < 40) {
                     playerHealth = std::min(playerMaxHealth, playerHealth + 10);
-                    std::cout << "Health pack! HP: " << playerHealth << std::endl;
                 }
                 if (rand() % 100 < 30) {
                     shotgunAmmo += 4;
-                    std::cout << "Shotgun ammo! now: " << shotgunAmmo << std::endl;
                 }
                 if (rand() % 100 < 20) {
                     pistolAmmo += 10;
-                    std::cout << "Pistol ammo! now: " << pistolAmmo << std::endl;
                 }
             }
         } else if (hitLinedef != -1) {
@@ -290,15 +285,11 @@ void performShot(float x, float y, float angle,
             hole.distance = closestDist;
             hole.lifetime = 150;
             bulletHoles.push_back(hole);
-            std::cout << "Hit wall at: " << hitX << ", " << hitY << std::endl;
             if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
-        } else {
-            std::cout << "Missed!" << std::endl;
         }
     }
     if (currentWeapon == 0) pistolAmmo--;
     else shotgunAmmo--;
-    std::cout << "Ammo: P=" << pistolAmmo << " S=" << shotgunAmmo << std::endl;
     if (bulletHoles.size() > 50)
         bulletHoles.erase(bulletHoles.begin(), bulletHoles.begin() + 10);
 }
@@ -383,12 +374,20 @@ int main() {
 
     // Загрузка текстур
     Texture wallTex = loadTexture(renderer, "stena.png");
-    Texture zombieTex = loadTexture(renderer, "mob_walking.png");
-    Texture zombieAttackTex = loadTexture(renderer, "mob_attack.png");
-    Texture zombieDeathTex = loadTexture(renderer, "mob_death.png");
-    Texture impTex = loadTexture(renderer, "mob_walking.png");
-    Texture impAttackTex = loadTexture(renderer, "mob_attack.png");
-    Texture impDeathTex = loadTexture(renderer, "mob_death.png");
+    Texture mobWalkingTex = loadTexture(renderer, "mob_walking.png");
+    Texture mobAttackTex = loadTexture(renderer, "mob_attack.png");
+    Texture mobDeathTex = loadTexture(renderer, "mob_death.png");
+
+    // Текстуры оружия
+    Texture gunTex = loadTexture(renderer, "gun.png");
+    Texture shootingGunTex = loadTexture(renderer, "shooting_gun.png");
+    Texture shotgunTex = loadTexture(renderer, "shotgun.png");
+    Texture shotgunShotTex = loadTexture(renderer, "shotgun_shot.png");
+
+    // Текстуры предметов
+    Texture firstAidKitTex = loadTexture(renderer, "firstaidkit.png");
+    Texture pistolCartridgesTex = loadTexture(renderer, "pistol_cartridges.png");
+    Texture shotgunCartridgesTex = loadTexture(renderer, "shotgun_cartridges.png");
 
     WadLoader wad;
     if (!wad.load("freedoom1.wad")) {
@@ -522,14 +521,14 @@ int main() {
         return 0;
     }
 
-    // Сохраняемые между уровнями параметры
     int playerHealth = 100;
     int pistolAmmo = 50;
     int shotgunAmmo = 10;
     int currentWeapon = 0;
     const int playerMaxHealth = 100;
 
-    // Определяем порядок уровней
+    int shootFlashFrames = 0;
+
     std::vector<std::string> levelOrder = {"level1.txt", "level2.txt", "level3.txt"};
     int currentLevelIdx = 0;
 
@@ -577,20 +576,27 @@ int main() {
         std::cout << "Player spawn at: " << player.x << ", " << player.y << std::endl;
 
         std::vector<Mob> mobs;
+        std::vector<Pickup> pickups;
+
         for (const auto& t : things) {
             if (t.type == 2) {
                 mobs.emplace_back((float)t.x, (float)t.y, ZOMBIE);
             } else if (t.type == 3) {
                 mobs.emplace_back((float)t.x, (float)t.y, IMP);
+            } else if (t.type == 2011) {
+                pickups.push_back({(float)t.x, (float)t.y, 2011, true});
+            } else if (t.type == 2007) {
+                pickups.push_back({(float)t.x, (float)t.y, 2007, true});
+            } else if (t.type == 2008) {
+                pickups.push_back({(float)t.x, (float)t.y, 2008, true});
             }
         }
         std::cout << "Level " << currentLevelIdx+1 << " has " << mobs.size() << " enemies" << std::endl;
+        std::cout << "Pickups: " << pickups.size() << std::endl;
 
-        // Для каждого моба добавляем состояние
         struct MobRenderState {
             bool isDying = false;
-            float deathAnimTime = 0.0f;
-            int deathFrame = 0;
+            float deathTimer = 0.0f;
             float attackAnimTime = 0.0f;
         };
         std::map<Mob*, MobRenderState> mobRenderStates;
@@ -642,6 +648,7 @@ int main() {
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                     if (now - lastShootTime >= SHOOT_DELAY_MS) {
                         lastShootTime = now;
+                        shootFlashFrames = 2;
                         performShot(player.x, player.y, player.angle,
                                     lines, vertices, mobs, bulletHoles, hitFlashes,
                                     pistolAmmo, shotgunAmmo, currentWeapon,
@@ -672,7 +679,32 @@ int main() {
             while (player.angle < 0) player.angle += 2*M_PI;
             while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
 
-            // Обновляем состояние мобов
+            if (shootFlashFrames > 0) {
+                shootFlashFrames--;
+            }
+
+            // Проверка подбора предметов
+            const float PICKUP_RADIUS = 32.0f;
+            for (auto& pickup : pickups) {
+                if (!pickup.active) continue;
+                float dxPickup = pickup.x - player.x;
+                float dyPickup = pickup.y - player.y;
+                float dist = sqrtf(dxPickup*dxPickup + dyPickup*dyPickup);
+                if (dist < PICKUP_RADIUS) {
+                    pickup.active = false;
+                    if (pickup.type == 2011) {
+                        playerHealth = std::min(playerMaxHealth, playerHealth + 25);
+                        std::cout << "Picked up First Aid Kit! HP: " << playerHealth << std::endl;
+                    } else if (pickup.type == 2007) {
+                        pistolAmmo += 20;
+                        std::cout << "Picked up Pistol Ammo! Now: " << pistolAmmo << std::endl;
+                    } else if (pickup.type == 2008) {
+                        shotgunAmmo += 6;
+                        std::cout << "Picked up Shotgun Ammo! Now: " << shotgunAmmo << std::endl;
+                    }
+                }
+            }
+
             for (auto& mob : mobs) {
                 auto& state = mobRenderStates[&mob];
 
@@ -682,28 +714,28 @@ int main() {
 
                 if (!mob.isAlive() && !state.isDying) {
                     state.isDying = true;
-                    state.deathAnimTime = 0.0f;
-                    state.deathFrame = 0;
+                    state.deathTimer = 0.5f;
                 }
 
-                if (state.isDying) {
-                    state.deathAnimTime += dt;
-                    int frame = (int)(state.deathAnimTime / 0.1f);
-                    if (frame >= 8) {
-                        state.deathFrame = -1;
-                    } else {
-                        state.deathFrame = frame;
-                    }
-                } else if (mob.isAlive()) {
+                if (!state.isDying && mob.isAlive()) {
                     float oldAttackCooldown = mob.attackCooldown;
                     float oldFireCooldown = mob.fireCooldown;
 
                     std::optional<EnemyProjectile> proj = mob.update(dt, player, lines, vertices);
+
+                    bool isAttackingNow = false;
+
                     if (proj.has_value()) {
-                        state.attackAnimTime = 0.2f;
+                        isAttackingNow = true;
+                    }
+                    else if (mob.attackCooldown > 0 && oldAttackCooldown <= 0) {
+                        isAttackingNow = true;
+                    }
+                    else if (mob.fireCooldown > 0 && oldFireCooldown <= 0 && mob.type != ZOMBIE) {
+                        isAttackingNow = true;
                     }
 
-                    if (mob.attackCooldown > 0 && oldAttackCooldown <= 0) {
+                    if (isAttackingNow) {
                         state.attackAnimTime = 0.2f;
                     }
 
@@ -719,9 +751,12 @@ int main() {
             mobs.erase(std::remove_if(mobs.begin(), mobs.end(),
                                       [&](const Mob& m) {
                                           auto it = mobRenderStates.find(const_cast<Mob*>(&m));
-                                          if (it != mobRenderStates.end() && it->second.deathFrame == -1) {
-                                              mobRenderStates.erase(it);
-                                              return true;
+                                          if (it != mobRenderStates.end() && it->second.isDying) {
+                                              it->second.deathTimer -= dt;
+                                              if (it->second.deathTimer <= 0.0f) {
+                                                  mobRenderStates.erase(it);
+                                                  return true;
+                                              }
                                           }
                                           return false;
                                       }),
@@ -823,6 +858,44 @@ int main() {
                 SDL_RenderFillRect(renderer, &rect);
             }
 
+            // Отрисовка предметов (увеличены, прижаты к полу, ниже)
+            for (const auto& pickup : pickups) {
+                if (!pickup.active) continue;
+
+                float dxTo = pickup.x - player.x;
+                float dyTo = pickup.y - player.y;
+                float distToPlayer = sqrtf(dxTo*dxTo + dyTo*dyTo);
+                if (!isPointVisible(player.x, player.y, pickup.x, pickup.y, lines, vertices)) continue;
+
+                float angleToPoint = atan2(dyTo, dxTo);
+                float angleDiff = angleToPoint - player.angle;
+                while (angleDiff < -M_PI) angleDiff += 2*M_PI;
+                while (angleDiff > M_PI) angleDiff -= 2*M_PI;
+
+                float screenX = (angleDiff / (FOV/2)) * (WINDOW_WIDTH/2) + WINDOW_WIDTH/2;
+                if (screenX < 0 || screenX >= WINDOW_WIDTH) continue;
+
+                // Размер предмета (чуть меньше, чтобы не перекрывать обзор)
+                float spriteHeight = 64.0f * 200.0f / distToPlayer;
+                if (spriteHeight < 24) spriteHeight = 24;
+                float spriteWidth = spriteHeight;
+
+                // ЕЩЁ НИЖЕ: прижимаем к полу сильнее (коэффициент 0.7)
+                float screenY = WINDOW_HEIGHT/2 + (56.0f / distToPlayer) * (WINDOW_HEIGHT / 1.5f) * 0.7f - spriteHeight;
+
+                const Texture* pickupTex = nullptr;
+                if (pickup.type == 2011) pickupTex = &firstAidKitTex;
+                else if (pickup.type == 2007) pickupTex = &pistolCartridgesTex;
+                else if (pickup.type == 2008) pickupTex = &shotgunCartridgesTex;
+
+                if (pickupTex && pickupTex->texture) {
+                    SDL_SetTextureBlendMode(pickupTex->texture, SDL_BLENDMODE_BLEND);
+                    SDL_FRect srcRect = {0, 0, (float)pickupTex->width, (float)pickupTex->height};
+                    SDL_FRect dstRect = {screenX - spriteWidth/2, screenY, spriteWidth, spriteHeight};
+                    SDL_RenderTexture(renderer, pickupTex->texture, &srcRect, &dstRect);
+                }
+            }
+
             std::vector<std::reference_wrapper<Mob>> sortedMobs(mobs.begin(), mobs.end());
             std::sort(sortedMobs.begin(), sortedMobs.end(),
                       [&player](const Mob& a, const Mob& b) {
@@ -831,7 +904,7 @@ int main() {
                           return da > db;
                       });
 
-            const float MOB_HEIGHT_WORLD = 56.0f;
+            const float MOB_HEIGHT_WORLD = 72.0f;
             const float VIEW_HEIGHT = 41.0f;
             const float FLOOR_HEIGHT = 0.0f;
             const float PROJ_SCALE = (float)WINDOW_HEIGHT / 1.5f;
@@ -863,36 +936,21 @@ int main() {
                 if (bottomY > WINDOW_HEIGHT) bottomY = WINDOW_HEIGHT;
                 if (topY >= bottomY) continue;
 
-                float screenWidth = screenHeight * 0.6f;
+                float screenWidth = screenHeight * 0.7f;
 
                 const Texture* mobTex = nullptr;
                 auto it = mobRenderStates.find(const_cast<Mob*>(&mob));
                 bool isDying = (it != mobRenderStates.end() && it->second.isDying);
                 bool isAttacking = (it != mobRenderStates.end() && it->second.attackAnimTime > 0 && !isDying);
-                int deathFrame = isDying ? it->second.deathFrame : -1;
 
-                if (isDying && deathFrame >= 0 && zombieDeathTex.texture) {
-                    mobTex = &zombieDeathTex;
-                    float frameW = (float)zombieDeathTex.width / 8.0f;
-                    SDL_SetTextureBlendMode(zombieDeathTex.texture, SDL_BLENDMODE_BLEND);
-                    SDL_FRect srcRect = {frameW * deathFrame, 0, frameW, (float)zombieDeathTex.height};
-                    SDL_FRect dstRect = {screenX - screenWidth/2, topY, screenWidth, screenHeight};
-                    SDL_RenderTexture(renderer, zombieDeathTex.texture, &srcRect, &dstRect);
-                    continue;
-                } else if (mob.type == ZOMBIE && !isDying) {
-                    if (isAttacking && zombieAttackTex.texture) {
-                        mobTex = &zombieAttackTex;
-                    } else {
-                        mobTex = &zombieTex;
-                    }
-                } else if (mob.type == IMP && !isDying) {
-                    if (isAttacking && impAttackTex.texture) {
-                        mobTex = &impAttackTex;
-                    } else {
-                        mobTex = &impTex;
-                    }
+                if (isDying && mobDeathTex.texture) {
+                    mobTex = &mobDeathTex;
                 } else {
-                    mobTex = &zombieTex;
+                    if (isAttacking && mobAttackTex.texture) {
+                        mobTex = &mobAttackTex;
+                    } else {
+                        mobTex = &mobWalkingTex;
+                    }
                 }
 
                 if (mobTex && mobTex->texture) {
@@ -915,6 +973,33 @@ int main() {
                     SDL_FRect rect = {screenX - screenWidth/2, topY, screenWidth, screenHeight};
                     SDL_RenderFillRect(renderer, &rect);
                 }
+            }
+
+            // ОТРИСОВКА ОРУЖИЯ
+            int weaponW = 500;
+            int weaponH = 300;
+            int weaponX = (WINDOW_WIDTH - weaponW) / 2;
+            int weaponY = WINDOW_HEIGHT - weaponH - 20;
+
+            const Texture* currentWeaponTex = nullptr;
+            if (currentWeapon == 0) {
+                if (shootFlashFrames > 0) {
+                    currentWeaponTex = &shootingGunTex;
+                } else {
+                    currentWeaponTex = &gunTex;
+                }
+            } else {
+                if (shootFlashFrames > 0) {
+                    currentWeaponTex = &shotgunShotTex;
+                } else {
+                    currentWeaponTex = &shotgunTex;
+                }
+            }
+
+            if (currentWeaponTex && currentWeaponTex->texture) {
+                SDL_FRect srcRect = {0, 0, (float)currentWeaponTex->width, (float)currentWeaponTex->height};
+                SDL_FRect dstRect = {(float)weaponX, (float)weaponY, (float)weaponW, (float)weaponH};
+                SDL_RenderTexture(renderer, currentWeaponTex->texture, &srcRect, &dstRect);
             }
 
             std::string hudText = "HP: " + std::to_string(playerHealth) + "  ";
@@ -948,12 +1033,16 @@ int main() {
     }
 
     SDL_DestroyTexture(wallTex.texture);
-    SDL_DestroyTexture(zombieTex.texture);
-    SDL_DestroyTexture(zombieAttackTex.texture);
-    SDL_DestroyTexture(zombieDeathTex.texture);
-    SDL_DestroyTexture(impTex.texture);
-    SDL_DestroyTexture(impAttackTex.texture);
-    SDL_DestroyTexture(impDeathTex.texture);
+    SDL_DestroyTexture(mobWalkingTex.texture);
+    SDL_DestroyTexture(mobAttackTex.texture);
+    SDL_DestroyTexture(mobDeathTex.texture);
+    SDL_DestroyTexture(gunTex.texture);
+    SDL_DestroyTexture(shootingGunTex.texture);
+    SDL_DestroyTexture(shotgunTex.texture);
+    SDL_DestroyTexture(shotgunShotTex.texture);
+    SDL_DestroyTexture(firstAidKitTex.texture);
+    SDL_DestroyTexture(pistolCartridgesTex.texture);
+    SDL_DestroyTexture(shotgunCartridgesTex.texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_CloseFont(font);
