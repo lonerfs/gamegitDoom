@@ -339,36 +339,113 @@ bool isPointVisible(float px, float py, float tx, float ty,
     return true;
 }
 
-struct MapInfo {
-    std::string name;
-    std::string source;
-    bool isCustom;
-};
+// ========== ФУНКЦИЯ ОКНА GAME OVER ==========
+bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) {
+    bool waiting = true;
+    bool restart = false;
+    SDL_Event event;
 
-std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
-    std::vector<MapInfo> maps;
-    if (std::ifstream("level1.txt").good()) maps.push_back({"★ MY LEVEL 1", "txt", true});
-    if (std::ifstream("level2.txt").good()) maps.push_back({"★ MY LEVEL 2", "txt", true});
-    if (std::ifstream("level3.txt").good()) maps.push_back({"★ MY LEVEL 3", "txt", true});
-    const auto& lumps = wad.getLumps();
-    for (const auto& lump : lumps) {
-        std::string name(lump.name, 8);
-        name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-        if (name.size() >= 5 && name.substr(0, 3) == "MAP" && isdigit(name[3]) && isdigit(name[4]))
-            maps.push_back({name, "wad", false});
-        else if (name.size() >= 4 && name[0] == 'E' && isdigit(name[1]) && name[2] == 'M' && isdigit(name[3]))
-            maps.push_back({name, "wad", false});
-    }
-    return maps;
-}
+    while (waiting) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                return false;
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.scancode == SDL_SCANCODE_R) {
+                    restart = true;
+                    waiting = false;
+                }
+                if (event.key.scancode == SDL_SCANCODE_ESCAPE || event.key.scancode == SDL_SCANCODE_Q) {
+                    return false;
+                }
+            }
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
+                float mx = event.button.x;
+                float my = event.button.y;
+                if (mx >= windowWidth/2 - 100 && mx <= windowWidth/2 + 100 &&
+                    my >= windowHeight/2 + 50 && my <= windowHeight/2 + 100) {
+                    restart = true;
+                    waiting = false;
+                }
+                if (mx >= windowWidth/2 - 100 && mx <= windowWidth/2 + 100 &&
+                    my >= windowHeight/2 + 120 && my <= windowHeight/2 + 170) {
+                    return false;
+                }
+            }
+        }
 
-void listAllLumps(const WadLoader& wad) {
-    const auto& lumps = wad.getLumps();
-    for (size_t i = 0; i < lumps.size(); i++) {
-        std::string name(lumps[i].name, 8);
-        name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-        std::cout << i << ": '" << name << "'" << std::endl;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        SDL_Color titleColor = {255, 0, 0, 255};
+        SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "GAME OVER", 0, titleColor);
+        if (titleSurf) {
+            SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
+            SDL_FRect titleRect = {static_cast<float>(windowWidth/2 - titleSurf->w/2),
+                                   static_cast<float>(windowHeight/2 - 150),
+                                   static_cast<float>(titleSurf->w), static_cast<float>(titleSurf->h)};
+            SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
+            SDL_DestroyTexture(titleTex);
+            SDL_DestroySurface(titleSurf);
+        }
+
+        SDL_Color btnColor = {100, 100, 100, 255};
+        SDL_Color btnHoverColor = {150, 150, 150, 255};
+        SDL_Color textColor = {255, 255, 255, 255};
+
+        float mx, my;
+        SDL_GetMouseState(&mx, &my);
+        bool hoverRestart = (mx >= windowWidth/2 - 100 && mx <= windowWidth/2 + 100 &&
+                             my >= windowHeight/2 + 50 && my <= windowHeight/2 + 100);
+        bool hoverQuit = (mx >= windowWidth/2 - 100 && mx <= windowWidth/2 + 100 &&
+                          my >= windowHeight/2 + 120 && my <= windowHeight/2 + 170);
+
+        SDL_FRect restartRect = {static_cast<float>(windowWidth/2 - 100),
+                                  static_cast<float>(windowHeight/2 + 50), 200, 50};
+        SDL_SetRenderDrawColor(renderer,
+            hoverRestart ? btnHoverColor.r : btnColor.r,
+            hoverRestart ? btnHoverColor.g : btnColor.g,
+            hoverRestart ? btnHoverColor.b : btnColor.b, 255);
+        SDL_RenderFillRect(renderer, &restartRect);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderRect(renderer, &restartRect);
+
+        SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "RESTART", 0, textColor);
+        if (restartSurf) {
+            SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
+            SDL_FRect textRect = {static_cast<float>(windowWidth/2 - restartSurf->w/2),
+                                   static_cast<float>(windowHeight/2 + 50 + (50 - restartSurf->h)/2),
+                                   static_cast<float>(restartSurf->w), static_cast<float>(restartSurf->h)};
+            SDL_RenderTexture(renderer, restartTex, NULL, &textRect);
+            SDL_DestroyTexture(restartTex);
+            SDL_DestroySurface(restartSurf);
+        }
+
+        SDL_FRect quitRect = {static_cast<float>(windowWidth/2 - 100),
+                               static_cast<float>(windowHeight/2 + 120), 200, 50};
+        SDL_SetRenderDrawColor(renderer,
+            hoverQuit ? btnHoverColor.r : btnColor.r,
+            hoverQuit ? btnHoverColor.g : btnColor.g,
+            hoverQuit ? btnHoverColor.b : btnColor.b, 255);
+        SDL_RenderFillRect(renderer, &quitRect);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderRect(renderer, &quitRect);
+
+        SDL_Surface* quitSurf = TTF_RenderText_Solid(font, "QUIT", 0, textColor);
+        if (quitSurf) {
+            SDL_Texture* quitTex = SDL_CreateTextureFromSurface(renderer, quitSurf);
+            SDL_FRect textRect = {static_cast<float>(windowWidth/2 - quitSurf->w/2),
+                                   static_cast<float>(windowHeight/2 + 120 + (50 - quitSurf->h)/2),
+                                   static_cast<float>(quitSurf->w), static_cast<float>(quitSurf->h)};
+            SDL_RenderTexture(renderer, quitTex, NULL, &textRect);
+            SDL_DestroyTexture(quitTex);
+            SDL_DestroySurface(quitSurf);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
     }
+    return restart;
 }
 
 // ========== ФУНКЦИЯ МЕНЮ ==========
@@ -380,11 +457,9 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
     };
 
     MenuButton playBtn = {{static_cast<float>(windowWidth/2 - 100),
-                           static_cast<float>(windowHeight/2 - 40), 200, 50}, "Play Game", false};
-    MenuButton editorBtn = {{static_cast<float>(windowWidth/2 - 100),
-                             static_cast<float>(windowHeight/2 + 20), 200, 50}, "Map Editor", false};
+                           static_cast<float>(windowHeight/2 - 20), 200, 50}, "Play Game", false};
     MenuButton exitBtn = {{static_cast<float>(windowWidth/2 - 100),
-                           static_cast<float>(windowHeight/2 + 80), 200, 50}, "Exit", false};
+                           static_cast<float>(windowHeight/2 + 50), 200, 50}, "Exit", false};
 
     bool menuRunning = true;
     int selected = -1;
@@ -393,7 +468,7 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
     while (menuRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                selected = 2;
+                selected = 1;
                 menuRunning = false;
             }
             if (event.type == SDL_EVENT_MOUSE_MOTION) {
@@ -401,31 +476,21 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
                 SDL_Rect rect = {static_cast<int>(playBtn.rect.x), static_cast<int>(playBtn.rect.y),
                                  static_cast<int>(playBtn.rect.w), static_cast<int>(playBtn.rect.h)};
                 playBtn.hover = SDL_PointInRect(&point, &rect);
-                rect = {static_cast<int>(editorBtn.rect.x), static_cast<int>(editorBtn.rect.y),
-                        static_cast<int>(editorBtn.rect.w), static_cast<int>(editorBtn.rect.h)};
-                editorBtn.hover = SDL_PointInRect(&point, &rect);
                 rect = {static_cast<int>(exitBtn.rect.x), static_cast<int>(exitBtn.rect.y),
                         static_cast<int>(exitBtn.rect.w), static_cast<int>(exitBtn.rect.h)};
                 exitBtn.hover = SDL_PointInRect(&point, &rect);
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
-                SDL_Point point = {static_cast<int>(event.button.x), static_cast<int>(event.button.y)};
-                SDL_Rect rect = {static_cast<int>(playBtn.rect.x), static_cast<int>(playBtn.rect.y),
-                                 static_cast<int>(playBtn.rect.w), static_cast<int>(playBtn.rect.h)};
-                if (SDL_PointInRect(&point, &rect)) {
+                float mx = event.button.x;
+                float my = event.button.y;
+                if (mx >= playBtn.rect.x && mx <= playBtn.rect.x + playBtn.rect.w &&
+                    my >= playBtn.rect.y && my <= playBtn.rect.y + playBtn.rect.h) {
                     selected = 0;
                     menuRunning = false;
                 }
-                rect = {static_cast<int>(editorBtn.rect.x), static_cast<int>(editorBtn.rect.y),
-                        static_cast<int>(editorBtn.rect.w), static_cast<int>(editorBtn.rect.h)};
-                if (SDL_PointInRect(&point, &rect)) {
+                if (mx >= exitBtn.rect.x && mx <= exitBtn.rect.x + exitBtn.rect.w &&
+                    my >= exitBtn.rect.y && my <= exitBtn.rect.y + exitBtn.rect.h) {
                     selected = 1;
-                    menuRunning = false;
-                }
-                rect = {static_cast<int>(exitBtn.rect.x), static_cast<int>(exitBtn.rect.y),
-                        static_cast<int>(exitBtn.rect.w), static_cast<int>(exitBtn.rect.h)};
-                if (SDL_PointInRect(&point, &rect)) {
-                    selected = 2;
                     menuRunning = false;
                 }
             }
@@ -434,7 +499,6 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Заголовок
         SDL_Color titleColor = {255, 0, 0, 255};
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "UNDOOM", 0, titleColor);
         if (titleSurf) {
@@ -447,12 +511,11 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
             SDL_DestroySurface(titleSurf);
         }
 
-        // Кнопки
         SDL_Color btnColor = {100, 100, 100, 255};
         SDL_Color btnHoverColor = {150, 150, 150, 255};
         SDL_Color textColor = {255, 255, 255, 255};
 
-        for (auto* btn : {&playBtn, &editorBtn, &exitBtn}) {
+        for (auto* btn : {&playBtn, &exitBtn}) {
             SDL_SetRenderDrawColor(renderer,
                 btn->hover ? btnHoverColor.r : btnColor.r,
                 btn->hover ? btnHoverColor.g : btnColor.g,
@@ -480,124 +543,22 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
 }
 
 // ========== ФУНКЦИЯ ИГРЫ ==========
-void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Font* smallFont) {
+bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Font* smallFont,
+             const Texture& wallTex,
+             const Texture& mobWalkingTex, const Texture& mobAttackTex, const Texture& mobDeathTex,
+             const Texture& bossWalkingTex, const Texture& bossAttackTex, const Texture& bossDeathTex,
+             const Texture& gunTex, const Texture& shootingGunTex,
+             const Texture& shotgunTex, const Texture& shotgunShotTex,
+             const Texture& firstAidKitTex,
+             const Texture& pistolCartridgesTex, const Texture& shotgunCartridgesTex) {
+
     const int WINDOW_WIDTH = 1280;
     const int WINDOW_HEIGHT = 960;
 
-    WadLoader wad;
-    if (!wad.load("freedoom1.wad")) {
-        std::cerr << "Warning: freedoom1.wad not loaded" << std::endl;
-    } else {
-        listAllLumps(wad);
-    }
-
-    auto maps = getAllMaps(wad);
-    if (maps.empty()) { 
-        std::cerr << "No maps found!" << std::endl; 
-        return;
-    }
-
-    int selectedMapIndex = 0, scrollOffset = 0, maxVisible = 15;
-    bool inMenu = true, running = true;
-    SDL_Event event;
-
-    DoomMap previewMap;
-    std::vector<Vertex> previewVertices;
-    std::vector<Linedef> previewLines;
-    bool hasPreview = false;
-
-    auto loadPreview = [&](int idx) {
-        if (maps[idx].isCustom) hasPreview = previewMap.loadFromTextFile("level" + std::to_string(idx+1) + ".txt");
-        else hasPreview = previewMap.loadFromWad(wad, maps[idx].name);
-        if (hasPreview) { previewVertices = previewMap.getVertices(); previewLines = previewMap.getLinedefs(); }
-    };
-    loadPreview(0);
-
-    while (inMenu && running) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) { running = false; inMenu = false; }
-            if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.scancode == SDL_SCANCODE_UP && selectedMapIndex > 0) {
-                    selectedMapIndex--;
-                    if (selectedMapIndex < scrollOffset) scrollOffset = selectedMapIndex;
-                    loadPreview(selectedMapIndex);
-                }
-                if (event.key.scancode == SDL_SCANCODE_DOWN && selectedMapIndex < (int)maps.size()-1) {
-                    selectedMapIndex++;
-                    if (selectedMapIndex >= scrollOffset+maxVisible) scrollOffset = selectedMapIndex - maxVisible + 1;
-                    loadPreview(selectedMapIndex);
-                }
-                if (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_SPACE) inMenu = false;
-            }
-        }
-
-        SDL_SetRenderDrawColor(renderer, 20,20,30,255);
-        SDL_RenderClear(renderer);
-
-        SDL_SetRenderDrawColor(renderer, 40,40,50,255);
-        SDL_FRect listPanel = {50,120,350,700};
-        SDL_RenderFillRect(renderer, &listPanel);
-
-        int visibleCount = std::min(maxVisible, (int)maps.size()-scrollOffset);
-        for (int i=0; i<visibleCount; i++) {
-            int idx = scrollOffset+i;
-            SDL_Color col = (idx==selectedMapIndex)? SDL_Color{255,200,0,255} : SDL_Color{200,200,200,255};
-            std::string name = maps[idx].name;
-            SDL_Surface* surf = TTF_RenderText_Solid(smallFont, name.c_str(), 0, col);
-            if (surf) {
-                SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
-                SDL_FRect rect = {70, 140.0f+i*35, (float)surf->w, (float)surf->h};
-                SDL_RenderTexture(renderer, tex, NULL, &rect);
-                SDL_DestroyTexture(tex);
-                SDL_DestroySurface(surf);
-            }
-        }
-
-        SDL_SetRenderDrawColor(renderer, 30,30,40,255);
-        SDL_FRect previewPanel = {450,120,780,700};
-        SDL_RenderFillRect(renderer, &previewPanel);
-
-        if (hasPreview && !previewVertices.empty()) {
-            int minX=previewVertices[0].x, maxX=minX, minY=previewVertices[0].y, maxY=minY;
-            for (auto& v: previewVertices) {
-                minX=std::min(minX,(int)v.x); maxX=std::max(maxX,(int)v.x);
-                minY=std::min(minY,(int)v.y); maxY=std::max(maxY,(int)v.y);
-            }
-            float sx = 700.0f/(maxX-minX), sy = 600.0f/(maxY-minY);
-            float scale = std::min(sx,sy)*0.8f;
-            float offX = 460 + (700 - (maxX-minX)*scale)/2 - minX*scale;
-            float offY = 180 + (600 - (maxY-minY)*scale)/2 + maxY*scale;
-            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
-            for (auto& line: previewLines) {
-                if (line.startVertex>=previewVertices.size() || line.endVertex>=previewVertices.size()) continue;
-                auto& v1=previewVertices[line.startVertex];
-                auto& v2=previewVertices[line.endVertex];
-                int x1 = v1.x*scale+offX, y1 = -v1.y*scale+offY;
-                int x2 = v2.x*scale+offX, y2 = -v2.y*scale+offY;
-                SDL_RenderLine(renderer, x1, y1, x2, y2);
-            }
-        }
-
-        SDL_RenderPresent(renderer);
-        SDL_Delay(16);
-    }
-
-    if (!running) return;
-
-    int playerHealth = 100;
-    int pistolAmmo = 50;
-    int shotgunAmmo = 10;
-    int currentWeapon = 0;
-    const int playerMaxHealth = 100;
-    int shootFlashFrames = 0;
-
-    // Получаем выбранную карту
-    std::string mapName = maps[selectedMapIndex].name;
     DoomMap gameMap;
-    if (maps[selectedMapIndex].isCustom) {
-        gameMap.loadFromTextFile("level" + std::to_string(selectedMapIndex+1) + ".txt");
-    } else {
-        gameMap.loadFromWad(wad, mapName);
+    if (!gameMap.loadFromTextFile("level1.txt")) {
+        std::cerr << "Failed to load level1.txt" << std::endl;
+        return false;
     }
 
     auto vertices = gameMap.getVertices();
@@ -605,7 +566,7 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     auto sidedefs = gameMap.getSidedefs();
     auto sectors = gameMap.getSectors();
 
-    if (vertices.empty() || lines.empty()) return;
+    if (vertices.empty() || lines.empty()) return false;
 
     Player player;
     player.angle = 0.0f;
@@ -683,9 +644,16 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     int RENDER_SCALE = 2;
     int RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
 
-    bool levelComplete = false;
+    bool playerDied = false;
+    int playerHealth = 100;
+    int pistolAmmo = 50;
+    int shotgunAmmo = 10;
+    int currentWeapon = 0;
+    const int playerMaxHealth = 100;
+    int shootFlashFrames = 0;
+    SDL_Event event;
 
-    while (!levelComplete) {
+    while (!playerDied) {
         Uint64 now = SDL_GetTicks();
         float dt = (now - lastTime)/1000.0f;
         lastTime = now;
@@ -699,8 +667,8 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         }
 
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) { return; }
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) { return; }
+            if (event.type == SDL_EVENT_QUIT) { playerDied = true; break; }
+            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) { playerDied = true; break; }
             if (event.type == SDL_EVENT_KEY_DOWN) {
                 if (event.key.scancode == SDL_SCANCODE_1) currentWeapon = 0;
                 if (event.key.scancode == SDL_SCANCODE_2) currentWeapon = 1;
@@ -716,10 +684,6 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                                 lines, vertices, mobs, bulletHoles, hitFlashes,
                                 pistolAmmo, shotgunAmmo, currentWeapon,
                                 playerHealth, playerMaxHealth);
-                    if (playerHealth <= 0) {
-                        std::cout << "GAME OVER" << std::endl;
-                        return;
-                    }
                 }
             }
         }
@@ -739,6 +703,11 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
 
         if (shootFlashFrames > 0) shootFlashFrames--;
+
+        if (playerHealth <= 0) {
+            playerDied = true;
+            break;
+        }
 
         const float PICKUP_RADIUS = 32.0f;
         for (auto& pickup : pickups) {
@@ -802,11 +771,13 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
 
                 mob.tryAttack(player, dt, playerHealth);
                 if (playerHealth <= 0) {
-                    std::cout << "GAME OVER" << std::endl;
-                    return;
+                    playerDied = true;
+                    break;
                 }
             }
         }
+
+        if (playerDied) break;
 
         for (auto& mob : mobs) {
             if (mob.type == BOSS && mob.vulnerabilityTimer > 0.0f) {
@@ -834,11 +805,6 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             } else {
                 ++it;
             }
-        }
-
-        if (mobs.empty() && !levelComplete) {
-            levelComplete = true;
-            break;
         }
 
         for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
@@ -1087,14 +1053,7 @@ void runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         SDL_Delay(15);
     }
 
-    std::cout << "Level completed!" << std::endl;
-}
-
-// ========== ФУНКЦИЯ РЕДАКТОРА КАРТ ==========
-void runMapEditor(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font) {
-    // Здесь код редактора карт из start_window_develop
-    // (оставляем как есть, он рабочий)
-    // Для краткости я не копирую его сюда, но он у тебя есть в ветке start_window_develop
+    return !playerDied;
 }
 
 // ========== MAIN ==========
@@ -1129,16 +1088,17 @@ int main() {
         return 1;
     }
 
+    SDL_SetRenderVSync(renderer, 0);
+
     TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 24);
     if (!font) font = TTF_OpenFont("arial.ttf", 24);
     if (!font) {
         std::cerr << "Предупреждение: не удалось загрузить шрифт." << std::endl;
     }
-    
+
     TTF_Font* smallFont = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 18);
     if (!smallFont) smallFont = font;
 
-    // Загружаем текстуры для игры
     Texture wallTex = loadTexture(renderer, "stena.png");
     Texture mobWalkingTex = loadTexture(renderer, "mob_walking.png");
     Texture mobAttackTex = loadTexture(renderer, "mob_attack.png");
@@ -1154,25 +1114,28 @@ int main() {
     Texture pistolCartridgesTex = loadTexture(renderer, "pistol_cartridges.png");
     Texture shotgunCartridgesTex = loadTexture(renderer, "shotgun_cartridges.png");
 
-    bool quit = false;
-    while (!quit) {
+    bool running = true;
+    while (running) {
         int choice = showMainMenu(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
-        switch (choice) {
-            case 0:
-                runGame(renderer, window, font, smallFont);
-                break;
-            case 1:
-                runMapEditor(renderer, window, font);
-                break;
-            case 2:
-                quit = true;
-                break;
-            default:
-                break;
+
+        if (choice == 0) {
+            bool completed = runGame(renderer, window, font, smallFont,
+                                     wallTex, mobWalkingTex, mobAttackTex, mobDeathTex,
+                                     bossWalkingTex, bossAttackTex, bossDeathTex,
+                                     gunTex, shootingGunTex, shotgunTex, shotgunShotTex,
+                                     firstAidKitTex, pistolCartridgesTex, shotgunCartridgesTex);
+
+            if (!completed) {
+                bool restart = showGameOverScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
+                if (!restart) {
+                    running = false;
+                }
+            }
+        } else if (choice == 1) {
+            running = false;
         }
     }
 
-    // Очистка текстур
     SDL_DestroyTexture(wallTex.texture);
     SDL_DestroyTexture(mobWalkingTex.texture);
     SDL_DestroyTexture(mobAttackTex.texture);
