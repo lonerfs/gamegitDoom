@@ -4,6 +4,7 @@ project(game)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# SDL3 (64-bit)
 set(SDL3_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3-3.4.2/x86_64-w64-mingw32")
 set(SDL3_TTF_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3_ttf-3.2.2/x86_64-w64-mingw32")
 set(SDL3_IMAGE_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3_image-3.4.2/x86_64-w64-mingw32")
@@ -17,6 +18,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib/tools)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
+# Основная игра
 add_executable(game
         src/main.cpp
         src/RenderThread.cpp
@@ -38,6 +40,7 @@ add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll $<TARGET_FILE_DIR:game>/SDL3_image.dll
 )
 
+# Редактор карт
 add_executable(map_editor
         lib/tools/editor_main.cpp
         lib/tools/MapToWad.cpp
@@ -57,6 +60,7 @@ add_custom_command(TARGET map_editor POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_TTF_BASE}/bin/SDL3_ttf.dll $<TARGET_FILE_DIR:map_editor>/SDL3_ttf.dll
         COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll $<TARGET_FILE_DIR:map_editor>/SDL3_image.dll
 )
+
 # Копируем текстуру стен в папку с исполняемым файлом
 add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
