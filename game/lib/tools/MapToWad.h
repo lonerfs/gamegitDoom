@@ -8,28 +8,24 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
-#include "game/WadLoader.h"   // WadHeader, LumpInfo уже определены здесь
-#include "game/DoomMap.h"     // Vertex, Linedef, Sidedef, Sector, Thing
+#include "game/WadLoader.h"
+#include "game/DoomMap.h"
 
 class MapToWad {
 public:
-    static bool convertTextMapToWad(const std::string& textFilename,
-                                    const std::string& wadFilename,
-                                    const std::string& mapName) {
-        // Заглушка для компиляции
-        std::cout << "convertTextMapToWad not implemented\n";
-        return false;
-    }
-
-    static bool createEmptyWad(const std::string& wadFilename) {
-        std::cout << "createEmptyWad not implemented\n";
-        return false;
-    }
-
     static bool addMapToWad(const std::string& wadFilename,
                            const std::string& textFilename,
-                           const std::string& mapName) {
-        std::cout << "addMapToWad not implemented\n";
-        return false;
-    }
+                           const std::string& mapName);
+
+    static bool createEmptyWad(const std::string& wadFilename);
+
+    static bool exportAllMapsToWad(const std::string& mapsFolder,
+                                   const std::string& wadFilename);
+
+    static bool addTextureToWad(const std::string& wadFilename,
+                                const std::string& textureFile,
+                                const std::string& textureName);
+
+    static bool addAllTexturesToWad(const std::string& wadFilename,
+                                    const std::string& texturesFolder);
 };

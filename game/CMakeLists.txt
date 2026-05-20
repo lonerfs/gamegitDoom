@@ -1,61 +1,69 @@
 cmake_minimum_required(VERSION 3.20)
 project(game)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Пути к SDL3 и SDL3_ttf (при необходимости подставьте свои)
-set(SDL3_ARCH_PATH ${CMAKE_SOURCE_DIR}/lib/SDL3-3.4.2/x86_64-w64-mingw32)
-list(APPEND CMAKE_PREFIX_PATH ${SDL3_ARCH_PATH})
-find_package(SDL3 REQUIRED CONFIG)
+# SDL3 (64-bit)
+set(SDL3_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3-3.4.2/x86_64-w64-mingw32")
+set(SDL3_TTF_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3_ttf-3.2.2/x86_64-w64-mingw32")
+set(SDL3_IMAGE_BASE "${CMAKE_SOURCE_DIR}/lib/SDL3_image-3.4.2/x86_64-w64-mingw32")
 
-set(SDL3_TTF_PATH ${CMAKE_SOURCE_DIR}/lib/SDL3_ttf-3.2.2/x86_64-w64-mingw32)
-list(APPEND CMAKE_PREFIX_PATH ${SDL3_TTF_PATH})
-find_package(SDL3_ttf REQUIRED CONFIG)
+include_directories(${SDL3_BASE}/include)
+include_directories(${SDL3_TTF_BASE}/include)
+include_directories(${SDL3_IMAGE_BASE}/include)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_SOURCE_DIR}/lib/tools)
 
-set(SOURCES
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+
+# Основная игра
+add_executable(game
         src/main.cpp
-        src/WadLoader.cpp
-        src/drawing_maps.cpp
+        src/RenderThread.cpp
         src/DoomMap.cpp
+        src/WadLoader.cpp
+        include/game/Mob.h
 )
 
-include_directories(include)
+target_link_libraries(game
+        ${SDL3_BASE}/lib/libSDL3.dll.a
+        ${SDL3_TTF_BASE}/lib/libSDL3_ttf.dll.a
+        ${SDL3_IMAGE_BASE}/lib/libSDL3_image.dll.a
+        pthread
+)
 
-add_executable(game ${SOURCES})
-target_link_libraries(game PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-
-# Копирование SDL3.dll
 add_custom_command(TARGET game POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${SDL3_ARCH_PATH}/bin/SDL3.dll
-        $<TARGET_FILE_DIR:game>
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_BASE}/bin/SDL3.dll $<TARGET_FILE_DIR:game>/SDL3.dll
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_TTF_BASE}/bin/SDL3_ttf.dll $<TARGET_FILE_DIR:game>/SDL3_ttf.dll
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll $<TARGET_FILE_DIR:game>/SDL3_image.dll
 )
 
-# Копирование SDL3_ttf.dll
+# Редактор карт
+add_executable(map_editor
+        lib/tools/editor_main.cpp
+        lib/tools/MapToWad.cpp
+        src/DoomMap.cpp
+        src/WadLoader.cpp
+)
+
+target_link_libraries(map_editor
+        ${SDL3_BASE}/lib/libSDL3.dll.a
+        ${SDL3_TTF_BASE}/lib/libSDL3_ttf.dll.a
+        ${SDL3_IMAGE_BASE}/lib/libSDL3_image.dll.a
+        pthread
+)
+
+add_custom_command(TARGET map_editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_BASE}/bin/SDL3.dll $<TARGET_FILE_DIR:map_editor>/SDL3.dll
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_TTF_BASE}/bin/SDL3_ttf.dll $<TARGET_FILE_DIR:map_editor>/SDL3_ttf.dll
+        COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll $<TARGET_FILE_DIR:map_editor>/SDL3_image.dll
+)
+
+# Копируем текстуру стен в папку с исполняемым файлом
 add_custom_command(TARGET game POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${SDL3_TTF_PATH}/bin/SDL3_ttf.dll
-        $<TARGET_FILE_DIR:game>
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_SOURCE_DIR}/lib/textures/stena.png
+        $<TARGET_FILE_DIR:game>/stena.png
 )
-
-# Копирование WAD-файла
-add_custom_command(TARGET game POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/freedoom1.wad
-        $<TARGET_FILE_DIR:game>
-)
-
-# Создание директории для карт
-add_custom_command(TARGET game POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-        $<TARGET_FILE_DIR:game>/maps
-)
-
-# Копирование шрифта только если он существует (опционально)
-if(EXISTS ${CMAKE_SOURCE_DIR}/arial.ttf)
-    add_custom_command(TARGET game POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/arial.ttf
-            $<TARGET_FILE_DIR:game>
-    )
-endif()
