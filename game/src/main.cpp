@@ -46,6 +46,45 @@ struct Texture {
     std::vector<Uint32> pixelData;
 };
 
+bool isInBossSpawnArea(float x, float y) {
+    if (x >= 992 && x <= 1216 && y >= 1056 && y <= 1184) return true;
+    if (x >= 1536 && x <= 1728 && y >= 1056 && y <= 1184) return true;
+    if (x >= 1568 && x <= 1664 && y >= 672 && y <= 896) return true;
+    if (x >= 1568 && x <= 1728 && y >= 256 && y <= 448) return true;
+    if (x >= 992 && x <= 1280 && y >= 256 && y <= 448) return true;
+    return false;
+}
+
+struct SpawnSquare {
+    float x1, y1, x2, y2;
+};
+
+std::vector<SpawnSquare> getBossSpawnSquares() {
+    return {
+        {992, 1056, 1216, 1184},
+        {1536, 1056, 1728, 1184},
+        {1568, 672, 1664, 896},
+        {1568, 256, 1728, 448},
+        {992, 256, 1280, 448}
+    };
+}
+
+void spawnMobsInRandomSquare(std::vector<Mob>& mobs, Mob& boss) {
+    auto squares = getBossSpawnSquares();
+    int squareIndex = rand() % squares.size();
+    auto& square = squares[squareIndex];
+    MobType types[] = {ZOMBIE, IMP};
+
+    for (int i = 0; i < 5; i++) {
+        float spawnX = square.x1 + (float)(rand() % (int)(square.x2 - square.x1));
+        float spawnY = square.y1 + (float)(rand() % (int)(square.y2 - square.y1));
+        MobType type = types[rand() % 2];
+        mobs.emplace_back(spawnX, spawnY, type);
+        boss.summonedMobsCount++;
+    }
+    boss.invulnerable = true;
+}
+
 Uint32 bilinearFilter(const Texture& tex, float u, float v) {
     float fx = u * tex.width;
     float fy = v * tex.height;
@@ -117,8 +156,9 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
         SDL_DestroySurface(surf);
 
         if (tex.texture) {
-            SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_LINEAR);
-            std::cout << "Loaded texture: " << filename << " (" << tex.width << "x" << tex.height << ")" << std::endl;
+            // Меняем LINEAR на NEAREST для чётких пикселей (убираем размытие)
+            SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_NEAREST);
+            std::cout << "Loaded texture: " << filename << std::endl;
         }
     } else {
         std::cerr << "Failed to load texture: " << filename << std::endl;
@@ -134,7 +174,7 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
             }
         }
         tex.texture = SDL_CreateTextureFromSurface(renderer, dummy);
-        SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_LINEAR);
+        SDL_SetTextureScaleMode(tex.texture, SDL_SCALEMODE_NEAREST);
         tex.width = tex.height = 64;
         SDL_DestroySurface(dummy);
     }
@@ -144,7 +184,7 @@ Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
 void drawWallColumn(SDL_Renderer* renderer, int x, int top, int bottom, int texX, const Texture& tex, float distance) {
     if (top >= bottom) return;
     int height = bottom - top;
-    const int STRIP_SIZE = 8;
+    const int STRIP_SIZE = 16;  // Чёткие полосы, нет размытия
     for (int y = top; y < bottom; y += STRIP_SIZE) {
         int yEnd = std::min(y + STRIP_SIZE, bottom);
         float t = (float)(y - top) / height;
@@ -218,23 +258,17 @@ void performShot(float x, float y, float angle,
     int pellets = (currentWeapon == 0) ? 1 : 3;
     float spread = (currentWeapon == 0) ? 0.0f : 0.08f;
     int ammo = (currentWeapon == 0) ? pistolAmmo : shotgunAmmo;
-    if (ammo <= 0) {
-        std::cout << (currentWeapon == 0 ? "No pistol ammo!" : "No shotgun ammo!") << std::endl;
-        return;
-    }
+    if (ammo <= 0) return;
 
     for (int i = 0; i < pellets; ++i) {
         float offset = 0.0f;
-        if (pellets > 1) {
-            offset = ((float)i / (pellets - 1) - 0.5f) * spread;
-        }
+        if (pellets > 1) offset = ((float)i / (pellets - 1) - 0.5f) * spread;
         float spreadAngle = angle + offset;
         float dx = cos(spreadAngle);
         float dy = sin(spreadAngle);
         float closestDist = std::numeric_limits<float>::max();
         Mob* hitMob = nullptr;
         float hitX = 0, hitY = 0;
-        int hitLinedef = -1;
 
         for (auto& mob : mobs) {
             float d, ix, iy;
@@ -243,7 +277,6 @@ void performShot(float x, float y, float angle,
                     closestDist = d;
                     hitMob = &mob;
                     hitX = ix; hitY = iy;
-                    hitLinedef = -1;
                 }
             }
         }
@@ -258,7 +291,6 @@ void performShot(float x, float y, float angle,
                 hitMob = nullptr;
                 hitX = h.hitX;
                 hitY = h.hitY;
-                hitLinedef = li;
             }
         }
 
@@ -269,22 +301,12 @@ void performShot(float x, float y, float angle,
             if (hitFlashes.size() > 50) hitFlashes.erase(hitFlashes.begin());
 
             if (!hitMob->isAlive()) {
-                if (rand() % 100 < 40) {
-                    playerHealth = std::min(playerMaxHealth, playerHealth + 10);
-                }
-                if (rand() % 100 < 30) {
-                    shotgunAmmo += 4;
-                }
-                if (rand() % 100 < 20) {
-                    pistolAmmo += 10;
-                }
+                if (rand() % 100 < 40) playerHealth = std::min(playerMaxHealth, playerHealth + 10);
+                if (rand() % 100 < 30) shotgunAmmo += 4;
+                if (rand() % 100 < 20) pistolAmmo += 10;
             }
-        } else if (hitLinedef != -1) {
-            BulletHole hole;
-            hole.x = hitX; hole.y = hitY;
-            hole.distance = closestDist;
-            hole.lifetime = 150;
-            bulletHoles.push_back(hole);
+        } else if (closestDist < 1000000.0f) {
+            bulletHoles.push_back({hitX, hitY, 150});
             if (bulletHoles.size() > 100) bulletHoles.erase(bulletHoles.begin());
         }
     }
@@ -301,7 +323,7 @@ bool isPointVisible(float px, float py, float tx, float ty,
     float dy = ty - py;
     float dist = std::sqrt(dx*dx + dy*dy);
     if (dist < 0.1f) return true;
-    float step = 0.1f;
+    float step = 0.5f;
     float nx = dx / dist;
     float ny = dy / dist;
     for (float d = 0; d < dist; d += step) {
@@ -342,14 +364,12 @@ std::vector<MapInfo> getAllMaps(const WadLoader& wad) {
 }
 
 void listAllLumps(const WadLoader& wad) {
-    std::cout << "=== LUMP LIST ===" << std::endl;
     const auto& lumps = wad.getLumps();
     for (size_t i = 0; i < lumps.size(); i++) {
         std::string name(lumps[i].name, 8);
         name.erase(std::find(name.begin(), name.end(), '\0'), name.end());
-        std::cout << i << ": '" << name << "' (size: " << lumps[i].size << ")" << std::endl;
+        std::cout << i << ": '" << name << "'" << std::endl;
     }
-    std::cout << "================" << std::endl;
 }
 
 int main() {
@@ -370,21 +390,21 @@ int main() {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) { SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit(); return 1; }
 
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetRenderVSync(renderer, 0);
 
-    // Загрузка текстур
     Texture wallTex = loadTexture(renderer, "stena.png");
     Texture mobWalkingTex = loadTexture(renderer, "mob_walking.png");
     Texture mobAttackTex = loadTexture(renderer, "mob_attack.png");
     Texture mobDeathTex = loadTexture(renderer, "mob_death.png");
+    Texture bossWalkingTex = loadTexture(renderer, "boss.png");
+    Texture bossAttackTex = loadTexture(renderer, "boss_attack.png");
+    Texture bossDeathTex = loadTexture(renderer, "boss_death.png");
 
-    // Текстуры оружия
     Texture gunTex = loadTexture(renderer, "gun.png");
     Texture shootingGunTex = loadTexture(renderer, "shooting_gun.png");
     Texture shotgunTex = loadTexture(renderer, "shotgun.png");
     Texture shotgunShotTex = loadTexture(renderer, "shotgun_shot.png");
 
-    // Текстуры предметов
     Texture firstAidKitTex = loadTexture(renderer, "firstaidkit.png");
     Texture pistolCartridgesTex = loadTexture(renderer, "pistol_cartridges.png");
     Texture shotgunCartridgesTex = loadTexture(renderer, "shotgun_cartridges.png");
@@ -435,19 +455,11 @@ int main() {
 
         SDL_SetRenderDrawColor(renderer, 20,20,30,255);
         SDL_RenderClear(renderer);
-        SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "SELECT MAP", 0, {255,100,0,255});
-        if (titleSurf) {
-            SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-            SDL_FRect tr = {WINDOW_WIDTH/2.0f - titleSurf->w/2.0f, 50, (float)titleSurf->w, (float)titleSurf->h};
-            SDL_RenderTexture(renderer, titleTex, NULL, &tr);
-            SDL_DestroyTexture(titleTex);
-            SDL_DestroySurface(titleSurf);
-        }
+
         SDL_SetRenderDrawColor(renderer, 40,40,50,255);
         SDL_FRect listPanel = {50,120,350,700};
         SDL_RenderFillRect(renderer, &listPanel);
-        SDL_SetRenderDrawColor(renderer, 100,100,120,255);
-        SDL_RenderRect(renderer, &listPanel);
+
         int visibleCount = std::min(maxVisible, (int)maps.size()-scrollOffset);
         for (int i=0; i<visibleCount; i++) {
             int idx = scrollOffset+i;
@@ -462,26 +474,11 @@ int main() {
                 SDL_DestroySurface(surf);
             }
         }
-        if ((int)maps.size() > maxVisible) {
-            float percent = (float)scrollOffset/(maps.size()-maxVisible);
-            SDL_FRect bar = {390, 120+percent*700, 10, 20};
-            SDL_SetRenderDrawColor(renderer, 200,200,200,255);
-            SDL_RenderFillRect(renderer, &bar);
-        }
+
         SDL_SetRenderDrawColor(renderer, 30,30,40,255);
         SDL_FRect previewPanel = {450,120,780,700};
         SDL_RenderFillRect(renderer, &previewPanel);
-        SDL_SetRenderDrawColor(renderer, 100,100,120,255);
-        SDL_RenderRect(renderer, &previewPanel);
-        std::string selName = maps[selectedMapIndex].name;
-        SDL_Surface* nameSurf = TTF_RenderText_Solid(font, selName.c_str(), 0, {255,200,0,255});
-        if (nameSurf) {
-            SDL_Texture* nameTex = SDL_CreateTextureFromSurface(renderer, nameSurf);
-            SDL_FRect nr = {WINDOW_WIDTH/2.0f - nameSurf->w/2.0f, 130, (float)nameSurf->w, (float)nameSurf->h};
-            SDL_RenderTexture(renderer, nameTex, NULL, &nr);
-            SDL_DestroyTexture(nameTex);
-            SDL_DestroySurface(nameSurf);
-        }
+
         if (hasPreview && !previewVertices.empty()) {
             int minX=previewVertices[0].x, maxX=minX, minY=previewVertices[0].y, maxY=minY;
             for (auto& v: previewVertices) {
@@ -502,14 +499,7 @@ int main() {
                 SDL_RenderLine(renderer, x1, y1, x2, y2);
             }
         }
-        SDL_Surface* instr = TTF_RenderText_Solid(smallFont, "UP/DOWN - select | ENTER - start", 0, {150,150,150,255});
-        if (instr) {
-            SDL_Texture* ti = SDL_CreateTextureFromSurface(renderer, instr);
-            SDL_FRect ir = {WINDOW_WIDTH/2.0f - instr->w/2.0f, 850, (float)instr->w, (float)instr->h};
-            SDL_RenderTexture(renderer, ti, NULL, &ir);
-            SDL_DestroyTexture(ti);
-            SDL_DestroySurface(instr);
-        }
+
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
@@ -526,7 +516,6 @@ int main() {
     int shotgunAmmo = 10;
     int currentWeapon = 0;
     const int playerMaxHealth = 100;
-
     int shootFlashFrames = 0;
 
     std::vector<std::string> levelOrder = {"level1.txt", "level2.txt", "level3.txt"};
@@ -536,23 +525,20 @@ int main() {
         DoomMap gameMap;
         std::string currentLevelFile = levelOrder[currentLevelIdx];
         gameMap.loadFromTextFile(currentLevelFile);
-        std::cout << "Loading level: " << currentLevelFile << std::endl;
 
         auto vertices = gameMap.getVertices();
         auto lines = gameMap.getLinedefs();
         auto sidedefs = gameMap.getSidedefs();
         auto sectors = gameMap.getSectors();
 
-        if (vertices.empty() || lines.empty()) {
-            std::cerr << "Map is empty, aborting" << std::endl;
-            break;
-        }
+        if (vertices.empty() || lines.empty()) break;
 
         Player player;
         player.angle = 0.0f;
         player.speed = 200.0f;
         bool spawnFound = false;
         const auto& things = gameMap.getThings();
+
         for (const auto& t : things) {
             if (t.type == 1) {
                 player.x = (float)t.x;
@@ -573,16 +559,20 @@ int main() {
             player.x = (minX + maxX) / 2.0f;
             player.y = (minY + maxY) / 2.0f;
         }
-        std::cout << "Player spawn at: " << player.x << ", " << player.y << std::endl;
 
         std::vector<Mob> mobs;
         std::vector<Pickup> pickups;
 
         for (const auto& t : things) {
-            if (t.type == 2) {
+            if (t.type == 1) {
+                player.x = (float)t.x;
+                player.y = (float)t.y;
+            } else if (t.type == 2) {
                 mobs.emplace_back((float)t.x, (float)t.y, ZOMBIE);
             } else if (t.type == 3) {
                 mobs.emplace_back((float)t.x, (float)t.y, IMP);
+            } else if (t.type == 4) {
+                mobs.emplace_back((float)t.x, (float)t.y, BOSS);
             } else if (t.type == 2011) {
                 pickups.push_back({(float)t.x, (float)t.y, 2011, true});
             } else if (t.type == 2007) {
@@ -591,13 +581,13 @@ int main() {
                 pickups.push_back({(float)t.x, (float)t.y, 2008, true});
             }
         }
-        std::cout << "Level " << currentLevelIdx+1 << " has " << mobs.size() << " enemies" << std::endl;
-        std::cout << "Pickups: " << pickups.size() << std::endl;
 
         struct MobRenderState {
             bool isDying = false;
             float deathTimer = 0.0f;
             float attackAnimTime = 0.0f;
+            bool isSummoning = false;
+            float summonAnimTime = 0.0f;
         };
         std::map<Mob*, MobRenderState> mobRenderStates;
 
@@ -615,12 +605,12 @@ int main() {
         unsigned int numThreads = std::thread::hardware_concurrency();
         if (numThreads == 0) numThreads = 4;
         ThreadPool threadPool(numThreads);
-        std::cout << "Using " << numThreads << " threads for raycasting" << std::endl;
 
-        int RENDER_SCALE = 1;
+        int RENDER_SCALE = 2;
         int RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE;
 
         bool levelComplete = false;
+        float bossSummonTimer = 0.0f;
 
         while (running && !levelComplete) {
             Uint64 now = SDL_GetTicks();
@@ -641,9 +631,9 @@ int main() {
                 if (event.type == SDL_EVENT_KEY_DOWN) {
                     if (event.key.scancode == SDL_SCANCODE_1) currentWeapon = 0;
                     if (event.key.scancode == SDL_SCANCODE_2) currentWeapon = 1;
-                    if (event.key.scancode == SDL_SCANCODE_F1) { RENDER_SCALE = 1; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: High" << std::endl; }
-                    if (event.key.scancode == SDL_SCANCODE_F2) { RENDER_SCALE = 2; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Medium" << std::endl; }
-                    if (event.key.scancode == SDL_SCANCODE_F3) { RENDER_SCALE = 3; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; std::cout << "Quality: Low" << std::endl; }
+                    if (event.key.scancode == SDL_SCANCODE_F1) { RENDER_SCALE = 1; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; }
+                    if (event.key.scancode == SDL_SCANCODE_F2) { RENDER_SCALE = 2; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; }
+                    if (event.key.scancode == SDL_SCANCODE_F3) { RENDER_SCALE = 3; RENDER_WIDTH = WINDOW_WIDTH / RENDER_SCALE; }
                 }
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
                     if (now - lastShootTime >= SHOOT_DELAY_MS) {
@@ -654,7 +644,6 @@ int main() {
                                     pistolAmmo, shotgunAmmo, currentWeapon,
                                     playerHealth, playerMaxHealth);
                         if (playerHealth <= 0) {
-                            std::cout << "GAME OVER" << std::endl;
                             running = false;
                             levelComplete = true;
                             break;
@@ -671,19 +660,14 @@ int main() {
             if (keys[SDL_SCANCODE_S]) { dx -= cos(player.angle)*move; dy -= sin(player.angle)*move; }
             if (keys[SDL_SCANCODE_A]) { dx += sin(player.angle)*move; dy -= cos(player.angle)*move; }
             if (keys[SDL_SCANCODE_D]) { dx -= sin(player.angle)*move; dy += cos(player.angle)*move; }
-            if (dx != 0 || dy != 0) {
-                player.moveWithSliding(dx, dy, lines, vertices);
-            }
+            if (dx != 0 || dy != 0) player.moveWithSliding(dx, dy, lines, vertices);
             if (keys[SDL_SCANCODE_LEFT]) player.angle -= turn;
             if (keys[SDL_SCANCODE_RIGHT]) player.angle += turn;
             while (player.angle < 0) player.angle += 2*M_PI;
             while (player.angle >= 2*M_PI) player.angle -= 2*M_PI;
 
-            if (shootFlashFrames > 0) {
-                shootFlashFrames--;
-            }
+            if (shootFlashFrames > 0) shootFlashFrames--;
 
-            // Проверка подбора предметов
             const float PICKUP_RADIUS = 32.0f;
             for (auto& pickup : pickups) {
                 if (!pickup.active) continue;
@@ -694,13 +678,10 @@ int main() {
                     pickup.active = false;
                     if (pickup.type == 2011) {
                         playerHealth = std::min(playerMaxHealth, playerHealth + 25);
-                        std::cout << "Picked up First Aid Kit! HP: " << playerHealth << std::endl;
                     } else if (pickup.type == 2007) {
                         pistolAmmo += 20;
-                        std::cout << "Picked up Pistol Ammo! Now: " << pistolAmmo << std::endl;
                     } else if (pickup.type == 2008) {
                         shotgunAmmo += 6;
-                        std::cout << "Picked up Shotgun Ammo! Now: " << shotgunAmmo << std::endl;
                     }
                 }
             }
@@ -708,9 +689,7 @@ int main() {
             for (auto& mob : mobs) {
                 auto& state = mobRenderStates[&mob];
 
-                if (state.attackAnimTime > 0) {
-                    state.attackAnimTime -= dt;
-                }
+                if (state.attackAnimTime > 0) state.attackAnimTime -= dt;
 
                 if (!mob.isAlive() && !state.isDying) {
                     state.isDying = true;
@@ -735,8 +714,18 @@ int main() {
                         isAttackingNow = true;
                     }
 
-                    if (isAttackingNow) {
-                        state.attackAnimTime = 0.2f;
+                    if (isAttackingNow) state.attackAnimTime = 0.2f;
+
+                    if (mob.type == BOSS && mob.isAlive() && mob.canSummon() && isAttackingNow) {
+                        auto summoned = mob.summonMobsAround();
+                        for (auto& newMob : summoned) {
+                            mobs.push_back(newMob);
+                        }
+                        mob.isSummoning = true;
+                        state.isSummoning = true;
+                        state.summonAnimTime = 0.3f;
+                        state.attackAnimTime = 0.3f;
+                        mob.resetSummonCooldown();
                     }
 
                     mob.tryAttack(player, dt, playerHealth);
@@ -748,22 +737,35 @@ int main() {
                 }
             }
 
-            mobs.erase(std::remove_if(mobs.begin(), mobs.end(),
-                                      [&](const Mob& m) {
-                                          auto it = mobRenderStates.find(const_cast<Mob*>(&m));
-                                          if (it != mobRenderStates.end() && it->second.isDying) {
-                                              it->second.deathTimer -= dt;
-                                              if (it->second.deathTimer <= 0.0f) {
-                                                  mobRenderStates.erase(it);
-                                                  return true;
-                                              }
-                                          }
-                                          return false;
-                                      }),
-                       mobs.end());
+            for (auto& mob : mobs) {
+                if (mob.type == BOSS && mob.vulnerabilityTimer > 0.0f) {
+                    mob.vulnerabilityTimer -= dt;
+                    if (mob.vulnerabilityTimer <= 0.0f) {
+                        mob.invulnerable = false;
+                    }
+                }
+            }
+
+            for (auto it = mobs.begin(); it != mobs.end(); ) {
+                bool wasAlive = it->isAlive();
+                if (!wasAlive) {
+                    for (auto& mob : mobs) {
+                        if (mob.type == BOSS && mob.summonedMobsCount > 0) {
+                            mob.summonedMobsCount--;
+                            if (mob.summonedMobsCount == 0 && mob.invulnerable) {
+                                mob.invulnerable = false;
+                                mob.vulnerabilityTimer = 1.0f;
+                            }
+                            break;
+                        }
+                    }
+                    it = mobs.erase(it);
+                } else {
+                    ++it;
+                }
+            }
 
             if (mobs.empty() && !levelComplete) {
-                std::cout << "Level " << currentLevelIdx+1 << " completed!" << std::endl;
                 levelComplete = true;
                 break;
             }
@@ -858,29 +860,23 @@ int main() {
                 SDL_RenderFillRect(renderer, &rect);
             }
 
-            // Отрисовка предметов (увеличены, прижаты к полу, ниже)
             for (const auto& pickup : pickups) {
                 if (!pickup.active) continue;
+                if (!isPointVisible(player.x, player.y, pickup.x, pickup.y, lines, vertices)) continue;
 
                 float dxTo = pickup.x - player.x;
                 float dyTo = pickup.y - player.y;
                 float distToPlayer = sqrtf(dxTo*dxTo + dyTo*dyTo);
-                if (!isPointVisible(player.x, player.y, pickup.x, pickup.y, lines, vertices)) continue;
-
                 float angleToPoint = atan2(dyTo, dxTo);
                 float angleDiff = angleToPoint - player.angle;
                 while (angleDiff < -M_PI) angleDiff += 2*M_PI;
                 while (angleDiff > M_PI) angleDiff -= 2*M_PI;
-
                 float screenX = (angleDiff / (FOV/2)) * (WINDOW_WIDTH/2) + WINDOW_WIDTH/2;
                 if (screenX < 0 || screenX >= WINDOW_WIDTH) continue;
 
-                // Размер предмета (чуть меньше, чтобы не перекрывать обзор)
                 float spriteHeight = 64.0f * 200.0f / distToPlayer;
                 if (spriteHeight < 24) spriteHeight = 24;
                 float spriteWidth = spriteHeight;
-
-                // ЕЩЁ НИЖЕ: прижимаем к полу сильнее (коэффициент 0.7)
                 float screenY = WINDOW_HEIGHT/2 + (56.0f / distToPlayer) * (WINDOW_HEIGHT / 1.5f) * 0.7f - spriteHeight;
 
                 const Texture* pickupTex = nullptr;
@@ -943,10 +939,18 @@ int main() {
                 bool isDying = (it != mobRenderStates.end() && it->second.isDying);
                 bool isAttacking = (it != mobRenderStates.end() && it->second.attackAnimTime > 0 && !isDying);
 
-                if (isDying && mobDeathTex.texture) {
-                    mobTex = &mobDeathTex;
+                if (mob.type == BOSS) {
+                    if (isDying && bossDeathTex.texture) {
+                        mobTex = &bossDeathTex;
+                    } else if ((isAttacking || (it != mobRenderStates.end() && it->second.isSummoning)) && bossAttackTex.texture) {
+                        mobTex = &bossAttackTex;
+                    } else if (bossWalkingTex.texture) {
+                        mobTex = &bossWalkingTex;
+                    }
                 } else {
-                    if (isAttacking && mobAttackTex.texture) {
+                    if (isDying && mobDeathTex.texture) {
+                        mobTex = &mobDeathTex;
+                    } else if (isAttacking && mobAttackTex.texture) {
                         mobTex = &mobAttackTex;
                     } else {
                         mobTex = &mobWalkingTex;
@@ -964,6 +968,7 @@ int main() {
                         case ZOMBIE: baseColor = {0, 200, 0, 255}; break;
                         case IMP:    baseColor = {200, 100, 0, 255}; break;
                         case DEMON:  baseColor = {200, 0, 0, 255}; break;
+                        case BOSS:   baseColor = {150, 0, 150, 255}; break;
                     }
                     float factor = (float)mob.hp / mob.maxHp;
                     SDL_SetRenderDrawColor(renderer,
@@ -975,7 +980,6 @@ int main() {
                 }
             }
 
-            // ОТРИСОВКА ОРУЖИЯ
             int weaponW = 500;
             int weaponH = 300;
             int weaponX = (WINDOW_WIDTH - weaponW) / 2;
@@ -983,17 +987,9 @@ int main() {
 
             const Texture* currentWeaponTex = nullptr;
             if (currentWeapon == 0) {
-                if (shootFlashFrames > 0) {
-                    currentWeaponTex = &shootingGunTex;
-                } else {
-                    currentWeaponTex = &gunTex;
-                }
+                currentWeaponTex = (shootFlashFrames > 0) ? &shootingGunTex : &gunTex;
             } else {
-                if (shootFlashFrames > 0) {
-                    currentWeaponTex = &shotgunShotTex;
-                } else {
-                    currentWeaponTex = &shotgunTex;
-                }
+                currentWeaponTex = (shootFlashFrames > 0) ? &shotgunShotTex : &shotgunTex;
             }
 
             if (currentWeaponTex && currentWeaponTex->texture) {
@@ -1006,8 +1002,7 @@ int main() {
             if (currentWeapon == 0) hudText += "PISTOL (" + std::to_string(pistolAmmo) + ")";
             else hudText += "SHOTGUN (" + std::to_string(shotgunAmmo) + ")";
             hudText += "  FPS: " + std::to_string(currentFPS);
-            std::string qualityText = (RENDER_SCALE==1)?"High":(RENDER_SCALE==2)?"Med":"Low";
-            hudText += "  Quality: " + qualityText;
+
             SDL_Surface* hudSurf = TTF_RenderText_Solid(smallFont, hudText.c_str(), 0, {255,255,255,255});
             if (hudSurf) {
                 SDL_Texture* hudTex = SDL_CreateTextureFromSurface(renderer, hudSurf);
@@ -1018,24 +1013,20 @@ int main() {
             }
 
             SDL_RenderPresent(renderer);
-            SDL_Delay(5);
+            SDL_Delay(15);
         }
 
-        if (playerHealth <= 0) {
-            std::cout << "Game Over" << std::endl;
-            break;
-        }
+        if (playerHealth <= 0) break;
         currentLevelIdx++;
-    }
-
-    if (currentLevelIdx >= 3 && playerHealth > 0) {
-        std::cout << "Congratulations! You completed all levels!" << std::endl;
     }
 
     SDL_DestroyTexture(wallTex.texture);
     SDL_DestroyTexture(mobWalkingTex.texture);
     SDL_DestroyTexture(mobAttackTex.texture);
     SDL_DestroyTexture(mobDeathTex.texture);
+    SDL_DestroyTexture(bossWalkingTex.texture);
+    SDL_DestroyTexture(bossAttackTex.texture);
+    SDL_DestroyTexture(bossDeathTex.texture);
     SDL_DestroyTexture(gunTex.texture);
     SDL_DestroyTexture(shootingGunTex.texture);
     SDL_DestroyTexture(shotgunTex.texture);

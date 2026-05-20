@@ -105,7 +105,8 @@ ThingType thingTypes[] = {
     {"ShotgunGuy", 9},
     {"Imp", 3001},
     {"Demon", 3002},
-    {"Cacodemon", 3005}
+    {"Cacodemon", 3005},
+    {"Boss", 4}
 };
 
 void worldToScreen(int wx, int wy, int& sx, int& sy) {
@@ -349,13 +350,11 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
-    // Получаем размер экрана для полноэкранного режима
     SDL_DisplayID display = SDL_GetPrimaryDisplay();
     const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
     int screenWidth = mode->w;
     int screenHeight = mode->h;
 
-    // Создаём окно на весь экран
     SDL_Window* window = SDL_CreateWindow("Doom Map Editor", screenWidth, screenHeight, SDL_WINDOW_FULLSCREEN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
     TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 14);
@@ -388,7 +387,6 @@ int main(int argc, char* argv[]) {
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_EVENT_QUIT) running = false;
 
-            // Переключение полноэкранного режима по F11
             if (ev.type == SDL_EVENT_KEY_DOWN && ev.key.scancode == SDL_SCANCODE_F11) {
                 fullscreen = !fullscreen;
                 if (fullscreen) {
@@ -586,7 +584,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Получаем актуальные размеры окна (на случай смены режима)
         int winW, winH;
         SDL_GetWindowSize(window, &winW, &winH);
 

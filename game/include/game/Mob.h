@@ -11,7 +11,8 @@
 enum MobType {
     ZOMBIE,
     IMP,
-    DEMON
+    DEMON,
+    BOSS
 };
 
 enum MobState {
@@ -42,9 +43,18 @@ struct Mob {
     float dodgeTimer;
     float dodgeAngle;
 
+    float summonCooldown;
+    bool isSummoning;
+
+    // Добавлено для совместимости с main.cpp
+    bool invulnerable;
+    int summonedMobsCount;
+    float vulnerabilityTimer;
+
     Mob(float _x, float _y, MobType _type) : x(_x), y(_y), type(_type), state(IDLE),
         attackCooldown(0.0f), fireCooldown(0.0f), awakened(false),
-        dodgeTimer(0.0f), dodgeAngle(0.0f)
+        dodgeTimer(0.0f), dodgeAngle(0.0f), summonCooldown(0.0f), isSummoning(false),
+        invulnerable(false), summonedMobsCount(0), vulnerabilityTimer(0.0f)
     {
         switch(type) {
             case ZOMBIE:
@@ -64,6 +74,17 @@ struct Mob {
                 speed = 100.0f;
                 size = 64;
                 fireCooldown = 0.9f;
+                break;
+            case BOSS:
+                hp = 300; maxHp = 300;
+                speed = 40.0f;
+                size = 96;
+                fireCooldown = 2.5f;
+                summonCooldown = 10.0f;
+                isSummoning = false;
+                invulnerable = false;
+                summonedMobsCount = 0;
+                vulnerabilityTimer = 0.0f;
                 break;
         }
     }
@@ -97,7 +118,6 @@ struct Mob {
         float dy = player.y - y;
         float dist = std::sqrt(dx*dx + dy*dy);
 
-        // Пробуждение
         if (!awakened) {
             if (dist < 600.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
                 awakened = true;
@@ -105,7 +125,6 @@ struct Mob {
             }
         }
 
-        // Уклонение (от выстрелов)
         if (dodgeTimer > 0.0f) {
             float dodgeSpeed = speed * 1.2f;
             float dxDodge = cos(dodgeAngle) * dodgeSpeed * dt;
@@ -121,18 +140,17 @@ struct Mob {
                 if (!collidesWithWall(x, newY, halfSize, lines, vertices)) y = newY;
             }
             dodgeTimer -= dt;
-            return std::nullopt; // во время уклонения не атакуем и не двигаемся к цели
+            return std::nullopt;
         }
 
-        // Дальность остановки преследования (зависит от типа)
         float stopDist = 0.0f;
         switch(type) {
-            case ZOMBIE: stopDist = 80.0f;  break; // подходит вплотную для ближнего боя
-            case IMP:    stopDist = 150.0f; break; // держит дистанцию для стрельбы
+            case ZOMBIE: stopDist = 80.0f;  break;
+            case IMP:    stopDist = 150.0f; break;
             case DEMON:  stopDist = 150.0f; break;
+            case BOSS:   stopDist = 200.0f; break;
         }
 
-        // Движение к игроку, если дистанция больше stopDist
         if (awakened && dist > stopDist && dist > 0.01f) {
             dx /= dist;
             dy /= dist;
@@ -150,27 +168,55 @@ struct Mob {
             }
         }
 
-        // Перезарядка ближней атаки и стрельбы
         if (attackCooldown > 0.0f) attackCooldown -= dt;
         if (fireCooldown > 0.0f) fireCooldown -= dt;
 
-        // Дальняя атака (только для IMP и DEMON)
+        if (type == BOSS && summonCooldown > 0.0f) {
+            summonCooldown -= dt;
+        }
+
+        if (type == BOSS && vulnerabilityTimer > 0.0f) {
+            vulnerabilityTimer -= dt;
+            if (vulnerabilityTimer <= 0.0f) {
+                invulnerable = false;
+            }
+        }
+
         if (awakened && type != ZOMBIE) {
             if (dist < 500.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
                 if (fireCooldown <= 0.0f) {
-                    fireCooldown = (type == IMP) ? 1.2f : 0.9f;
-                    EnemyProjectile proj;
-                    float dxN = dx / dist;
-                    float dyN = dy / dist;
-                    float projSpeed = (type == IMP) ? 120.0f : 180.0f;
-                    proj.x = x;
-                    proj.y = y;
-                    proj.vx = dxN * projSpeed;
-                    proj.vy = dyN * projSpeed;
-                    proj.damage = (type == IMP) ? 8.0f : 15.0f;
-                    proj.lifetime = 3.0f;
-                    proj.type = (type == IMP) ? 0 : 1;
-                    return proj;
+                    if (type == BOSS) {
+                        fireCooldown = 2.5f;
+                        for (int i = -1; i <= 1; i++) {
+                            EnemyProjectile proj;
+                            float angleToPlayer = atan2(dy, dx);
+                            float angleOffset = i * 0.25f;
+                            float finalAngle = angleToPlayer + angleOffset;
+                            float projSpeed = 150.0f;
+                            proj.x = x;
+                            proj.y = y;
+                            proj.vx = cos(finalAngle) * projSpeed;
+                            proj.vy = sin(finalAngle) * projSpeed;
+                            proj.damage = 20.0f;
+                            proj.lifetime = 3.0f;
+                            proj.type = 2;
+                            return proj;
+                        }
+                    } else {
+                        fireCooldown = (type == IMP) ? 1.2f : 0.9f;
+                        EnemyProjectile proj;
+                        float dxN = dx / dist;
+                        float dyN = dy / dist;
+                        float projSpeed = (type == IMP) ? 120.0f : 180.0f;
+                        proj.x = x;
+                        proj.y = y;
+                        proj.vx = dxN * projSpeed;
+                        proj.vy = dyN * projSpeed;
+                        proj.damage = (type == IMP) ? 8.0f : 15.0f;
+                        proj.lifetime = 3.0f;
+                        proj.type = (type == IMP) ? 0 : 1;
+                        return proj;
+                    }
                 }
             }
         }
@@ -182,27 +228,27 @@ struct Mob {
         float dy = player.y - y;
         float dist = std::sqrt(dx*dx + dy*dy);
 
-        // Ближняя атака для всех мобов
         if (dist < 80.0f && attackCooldown <= 0.0f) {
             int damage = 0;
             switch(type) {
                 case ZOMBIE: damage = 5; break;
                 case IMP:    damage = 10; break;
                 case DEMON:  damage = 20; break;
+                case BOSS:   damage = 30; break;
             }
             playerHealth -= damage;
             attackCooldown = 1.0f;
             if (playerHealth < 0) playerHealth = 0;
-            std::cout << "Player hit by " << (type==ZOMBIE?"Zombie":(type==IMP?"Imp":"Demon"))
+            std::cout << "Player hit by " << (type==ZOMBIE?"Zombie":(type==IMP?"Imp":(type==DEMON?"Demon":"Boss")))
                       << "! HP: " << playerHealth << std::endl;
         }
     }
 
     void takeDamage(int dmg) {
+        if (invulnerable) return;
         hp -= dmg;
         if (hp < 0) hp = 0;
         awakened = true;
-        // уклонение только если ещё жив
         if (hp > 0) {
             dodgeTimer = 0.3f;
             dodgeAngle = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
@@ -210,6 +256,48 @@ struct Mob {
     }
 
     bool isAlive() const { return hp > 0; }
+
+    bool canSummon() const {
+        return type == BOSS && awakened && summonCooldown <= 0.0f;
+    }
+
+    void resetSummonCooldown() {
+        if (type == BOSS) {
+            summonCooldown = 10.0f;
+        }
+    }
+
+    std::vector<Mob> summonMobs() {
+        std::vector<Mob> summoned;
+        if (type == BOSS && !isAlive()) {
+            MobType types[] = {ZOMBIE, IMP};
+            for (int i = 0; i < 2; i++) {
+                float angle = (float)rand() / RAND_MAX * 2.0f * M_PI;
+                float dist = 100.0f;
+                float spawnX = x + cos(angle) * dist;
+                float spawnY = y + sin(angle) * dist;
+                summoned.emplace_back(spawnX, spawnY, types[rand() % 2]);
+            }
+        }
+        return summoned;
+    }
+
+    std::vector<Mob> summonMobsAround() {
+        std::vector<Mob> summoned;
+        if (type == BOSS) {
+            MobType types[] = {ZOMBIE, IMP};
+            for (int i = 0; i < 2; i++) {
+                float angle = (float)rand() / RAND_MAX * 2.0f * M_PI;
+                float dist = 80.0f;
+                float spawnX = x + cos(angle) * dist;
+                float spawnY = y + sin(angle) * dist;
+                summoned.emplace_back(spawnX, spawnY, types[rand() % 2]);
+            }
+            summonedMobsCount = 2;
+            invulnerable = true;
+        }
+        return summoned;
+    }
 
 private:
     bool collidesWithWall(float cx, float cy, float r, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) const {
