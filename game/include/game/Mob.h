@@ -10,8 +10,6 @@
 
 enum MobType {
     ZOMBIE,
-    IMP,
-    DEMON,
     BOSS
 };
 
@@ -19,14 +17,6 @@ enum MobState {
     IDLE,
     CHASE,
     ATTACK
-};
-
-struct EnemyProjectile {
-    float x, y;
-    float vx, vy;
-    float damage;
-    float lifetime;
-    int type;
 };
 
 struct Mob {
@@ -46,45 +36,52 @@ struct Mob {
     float summonCooldown;
     bool isSummoning;
 
-    // Добавлено для совместимости с main.cpp
     bool invulnerable;
     int summonedMobsCount;
     float vulnerabilityTimer;
 
+    float attackRange;
+    float shootRange;
+    float projectileSpeed;
+    int projectileDamage;
+
+    float wanderTimer;
+    float wanderAngle;
+    float wanderSpeed;
+
     Mob(float _x, float _y, MobType _type) : x(_x), y(_y), type(_type), state(IDLE),
         attackCooldown(0.0f), fireCooldown(0.0f), awakened(false),
         dodgeTimer(0.0f), dodgeAngle(0.0f), summonCooldown(0.0f), isSummoning(false),
-        invulnerable(false), summonedMobsCount(0), vulnerabilityTimer(0.0f)
+        invulnerable(false), summonedMobsCount(0), vulnerabilityTimer(0.0f),
+        wanderTimer(0.0f), wanderAngle(0.0f), wanderSpeed(30.0f)
     {
-        switch(type) {
+        switch(_type) {
             case ZOMBIE:
-                hp = 40; maxHp = 40;
-                speed = 50.0f;
-                size = 48;
-                fireCooldown = 999.0f;
-                break;
-            case IMP:
-                hp = 60; maxHp = 60;
-                speed = 70.0f;
+                hp = 50; maxHp = 50;
+                speed = 120.0f;
                 size = 56;
-                fireCooldown = 1.2f;
-                break;
-            case DEMON:
-                hp = 100; maxHp = 100;
-                speed = 100.0f;
-                size = 64;
-                fireCooldown = 0.9f;
+                attackRange = 80.0f;
+                shootRange = 500.0f;
+                projectileSpeed = 400.0f;
+                projectileDamage = 10;
+                fireCooldown = 0.0f;
+                wanderSpeed = 80.0f;
                 break;
             case BOSS:
-                hp = 300; maxHp = 300;
-                speed = 40.0f;
+                hp = 400; maxHp = 400;
+                speed = 80.0f;
                 size = 96;
-                fireCooldown = 2.5f;
+                attackRange = 120.0f;
+                shootRange = 600.0f;
+                projectileSpeed = 500.0f;
+                projectileDamage = 25;
+                fireCooldown = 0.0f;
                 summonCooldown = 10.0f;
                 isSummoning = false;
                 invulnerable = false;
                 summonedMobsCount = 0;
                 vulnerabilityTimer = 0.0f;
+                wanderSpeed = 60.0f;
                 break;
         }
     }
@@ -92,36 +89,42 @@ struct Mob {
     bool hasLineOfSight(float tx, float ty, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) const {
         float dx = tx - x;
         float dy = ty - y;
-
-        for (const auto& line : lines) {
-            if (line.startVertex >= vertices.size() || line.endVertex >= vertices.size()) continue;
-            const Vertex& v1 = vertices[line.startVertex];
-            const Vertex& v2 = vertices[line.endVertex];
-
-            float v1x = v1.x - x; float v1y = v1.y - y;
-            float v2x = v2.x - x; float v2y = v2.y - y;
-            float cross1 = dx * v1y - dy * v1x;
-            float cross2 = dx * v2y - dy * v2x;
-
-            if (cross1 * cross2 < 0) {
-                float ldx = v2.x - v1.x; float ldy = v2.y - v1.y;
-                float cross3 = ldx * (-v1y) - ldy * (-v1x);
-                float cross4 = ldx * (dy - v1y) - ldy * (dx - v1x);
-                if (cross3 * cross4 < 0) return false;
+        float dist = std::sqrt(dx*dx + dy*dy);
+        if (dist < 0.1f) return true;
+        float step = 0.5f;
+        float nx = dx / dist;
+        float ny = dy / dist;
+        for (float d = 0; d < dist; d += step) {
+            float cx = x + nx * d;
+            float cy = y + ny * d;
+            for (const auto& line : lines) {
+                if (line.startVertex >= vertices.size() || line.endVertex >= vertices.size()) continue;
+                const Vertex& v1 = vertices[line.startVertex];
+                const Vertex& v2 = vertices[line.endVertex];
+                float cross1 = nx * (v1.y - cy) - ny * (v1.x - cx);
+                float cross2 = nx * (v2.y - cy) - ny * (v2.x - cx);
+                if (cross1 * cross2 < 0) {
+                    float ldx = v2.x - v1.x;
+                    float ldy = v2.y - v1.y;
+                    float cross3 = ldx * (cy - v1.y) - ldy * (cx - v1.x);
+                    float cross4 = ldx * (ty - v1.y) - ldy * (tx - v1.x);
+                    if (cross3 * cross4 < 0) return false;
+                }
             }
         }
         return true;
     }
 
-    std::optional<EnemyProjectile> update(float dt, const Player& player, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
+    void update(float dt, const Player& player, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) {
         float dx = player.x - x;
         float dy = player.y - y;
-        float dist = std::sqrt(dx*dx + dy*dy);
+        float distToPlayer = std::sqrt(dx*dx + dy*dy);
 
         if (!awakened) {
-            if (dist < 600.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
+            if (distToPlayer < 500.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
                 awakened = true;
                 state = CHASE;
+                std::cout << "Mob awakened at (" << x << "," << y << ")" << std::endl;
             }
         }
 
@@ -140,87 +143,76 @@ struct Mob {
                 if (!collidesWithWall(x, newY, halfSize, lines, vertices)) y = newY;
             }
             dodgeTimer -= dt;
-            return std::nullopt;
-        }
-
-        float stopDist = 0.0f;
-        switch(type) {
-            case ZOMBIE: stopDist = 80.0f;  break;
-            case IMP:    stopDist = 150.0f; break;
-            case DEMON:  stopDist = 150.0f; break;
-            case BOSS:   stopDist = 200.0f; break;
-        }
-
-        if (awakened && dist > stopDist && dist > 0.01f) {
-            dx /= dist;
-            dy /= dist;
-            float move = speed * dt;
-            float newX = x + dx * move;
-            float newY = y + dy * move;
-            float halfSize = size / 2.0f;
-
-            if (!collidesWithWall(newX, newY, halfSize, lines, vertices)) {
-                x = newX;
-                y = newY;
-            } else {
-                if (!collidesWithWall(newX, y, halfSize, lines, vertices)) x = newX;
-                if (!collidesWithWall(x, newY, halfSize, lines, vertices)) y = newY;
-            }
+            return;
         }
 
         if (attackCooldown > 0.0f) attackCooldown -= dt;
         if (fireCooldown > 0.0f) fireCooldown -= dt;
-
-        if (type == BOSS && summonCooldown > 0.0f) {
-            summonCooldown -= dt;
-        }
-
+        if (type == BOSS && summonCooldown > 0.0f) summonCooldown -= dt;
         if (type == BOSS && vulnerabilityTimer > 0.0f) {
             vulnerabilityTimer -= dt;
-            if (vulnerabilityTimer <= 0.0f) {
-                invulnerable = false;
-            }
+            if (vulnerabilityTimer <= 0.0f) invulnerable = false;
         }
 
-        if (awakened && type != ZOMBIE) {
-            if (dist < 500.0f && hasLineOfSight(player.x, player.y, lines, vertices)) {
-                if (fireCooldown <= 0.0f) {
-                    if (type == BOSS) {
-                        fireCooldown = 2.5f;
-                        for (int i = -1; i <= 1; i++) {
-                            EnemyProjectile proj;
-                            float angleToPlayer = atan2(dy, dx);
-                            float angleOffset = i * 0.25f;
-                            float finalAngle = angleToPlayer + angleOffset;
-                            float projSpeed = 150.0f;
-                            proj.x = x;
-                            proj.y = y;
-                            proj.vx = cos(finalAngle) * projSpeed;
-                            proj.vy = sin(finalAngle) * projSpeed;
-                            proj.damage = 20.0f;
-                            proj.lifetime = 3.0f;
-                            proj.type = 2;
-                            return proj;
-                        }
-                    } else {
-                        fireCooldown = (type == IMP) ? 1.2f : 0.9f;
-                        EnemyProjectile proj;
-                        float dxN = dx / dist;
-                        float dyN = dy / dist;
-                        float projSpeed = (type == IMP) ? 120.0f : 180.0f;
-                        proj.x = x;
-                        proj.y = y;
-                        proj.vx = dxN * projSpeed;
-                        proj.vy = dyN * projSpeed;
-                        proj.damage = (type == IMP) ? 8.0f : 15.0f;
-                        proj.lifetime = 3.0f;
-                        proj.type = (type == IMP) ? 0 : 1;
-                        return proj;
-                    }
+        if (awakened && distToPlayer < shootRange && hasLineOfSight(player.x, player.y, lines, vertices)) {
+            state = CHASE;
+            if (distToPlayer > attackRange * 0.8f) {
+                float moveX = dx / distToPlayer * speed * dt;
+                float moveY = dy / distToPlayer * speed * dt;
+                float newX = x + moveX;
+                float newY = y + moveY;
+                float halfSize = size / 2.0f;
+                if (!collidesWithWall(newX, newY, halfSize, lines, vertices)) {
+                    x = newX;
+                    y = newY;
+                } else {
+                    if (!collidesWithWall(newX, y, halfSize, lines, vertices)) x = newX;
+                    if (!collidesWithWall(x, newY, halfSize, lines, vertices)) y = newY;
                 }
             }
+        } else if (awakened && distToPlayer < shootRange && !hasLineOfSight(player.x, player.y, lines, vertices)) {
+            if (distToPlayer > attackRange * 0.8f) {
+                float moveX = dx / distToPlayer * speed * dt;
+                float moveY = dy / distToPlayer * speed * dt;
+                float newX = x + moveX;
+                float newY = y + moveY;
+                float halfSize = size / 2.0f;
+                if (!collidesWithWall(newX, newY, halfSize, lines, vertices)) {
+                    x = newX;
+                    y = newY;
+                }
+            }
+        } else if (awakened && distToPlayer >= shootRange) {
+            if (distToPlayer > 0.01f) {
+                float moveX = dx / distToPlayer * speed * dt;
+                float moveY = dy / distToPlayer * speed * dt;
+                float newX = x + moveX;
+                float newY = y + moveY;
+                float halfSize = size / 2.0f;
+                if (!collidesWithWall(newX, newY, halfSize, lines, vertices)) {
+                    x = newX;
+                    y = newY;
+                }
+            }
+        } else if (!awakened) {
+            state = IDLE;
+            wanderTimer -= dt;
+            if (wanderTimer <= 0.0f) {
+                wanderTimer = 1.5f + (rand() % 100) / 50.0f;
+                wanderAngle = (rand() % 360) * M_PI / 180.0f;
+            }
+            float moveX = cos(wanderAngle) * wanderSpeed * dt;
+            float moveY = sin(wanderAngle) * wanderSpeed * dt;
+            float newX = x + moveX;
+            float newY = y + moveY;
+            float halfSize = size / 2.0f;
+            if (!collidesWithWall(newX, newY, halfSize, lines, vertices)) {
+                x = newX;
+                y = newY;
+            } else {
+                wanderAngle += M_PI / 2;
+            }
         }
-        return std::nullopt;
     }
 
     void tryAttack(Player& player, float dt, int& playerHealth) {
@@ -228,19 +220,12 @@ struct Mob {
         float dy = player.y - y;
         float dist = std::sqrt(dx*dx + dy*dy);
 
-        if (dist < 80.0f && attackCooldown <= 0.0f) {
-            int damage = 0;
-            switch(type) {
-                case ZOMBIE: damage = 5; break;
-                case IMP:    damage = 10; break;
-                case DEMON:  damage = 20; break;
-                case BOSS:   damage = 30; break;
-            }
+        if (dist < attackRange && attackCooldown <= 0.0f) {
+            int damage = (type == BOSS) ? 30 : 10;
             playerHealth -= damage;
             attackCooldown = 1.0f;
             if (playerHealth < 0) playerHealth = 0;
-            std::cout << "Player hit by " << (type==ZOMBIE?"Zombie":(type==IMP?"Imp":(type==DEMON?"Demon":"Boss")))
-                      << "! HP: " << playerHealth << std::endl;
+            std::cout << "Player hit by " << (type == BOSS ? "Boss" : "Zombie") << "! HP: " << playerHealth << std::endl;
         }
     }
 
@@ -262,39 +247,22 @@ struct Mob {
     }
 
     void resetSummonCooldown() {
-        if (type == BOSS) {
-            summonCooldown = 10.0f;
-        }
-    }
-
-    std::vector<Mob> summonMobs() {
-        std::vector<Mob> summoned;
-        if (type == BOSS && !isAlive()) {
-            MobType types[] = {ZOMBIE, IMP};
-            for (int i = 0; i < 2; i++) {
-                float angle = (float)rand() / RAND_MAX * 2.0f * M_PI;
-                float dist = 100.0f;
-                float spawnX = x + cos(angle) * dist;
-                float spawnY = y + sin(angle) * dist;
-                summoned.emplace_back(spawnX, spawnY, types[rand() % 2]);
-            }
-        }
-        return summoned;
+        if (type == BOSS) summonCooldown = 10.0f;
     }
 
     std::vector<Mob> summonMobsAround() {
         std::vector<Mob> summoned;
-        if (type == BOSS) {
-            MobType types[] = {ZOMBIE, IMP};
+        if (type == BOSS && isSummoning) {
             for (int i = 0; i < 2; i++) {
                 float angle = (float)rand() / RAND_MAX * 2.0f * M_PI;
                 float dist = 80.0f;
                 float spawnX = x + cos(angle) * dist;
                 float spawnY = y + sin(angle) * dist;
-                summoned.emplace_back(spawnX, spawnY, types[rand() % 2]);
+                summoned.emplace_back(spawnX, spawnY, ZOMBIE);
             }
             summonedMobsCount = 2;
             invulnerable = true;
+            isSummoning = false;
         }
         return summoned;
     }
