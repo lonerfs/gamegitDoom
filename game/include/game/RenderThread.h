@@ -1,14 +1,12 @@
 #pragma once
 
 #include <vector>
-#include <thread>
+#include <future>
 #include <mutex>
 #include <condition_variable>
 #include <functional>
+#include <thread>
 #include <queue>
-#include <atomic>
-#include <memory>
-#include <future>
 #include "game/DoomMap.h"
 #include "game/Player.h"
 
@@ -20,45 +18,44 @@ struct HitResult {
     float hitU;
 };
 
-HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
-                              float x1, float y1, float x2, float y2);
-
 struct ColumnResult {
     int x;
-    int wallTop;
-    int wallBottom;
-    float hitU;
     float distance;
-    int sector;
+    float hitU;
+    float hitX, hitY;
     int linedefIndex;
-    float hitX;
-    float hitY;
+    int wallTop, wallBottom;
+    int sector;
 };
 
-HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
-                              float x1, float y1, float x2, float y2);
 class ThreadPool {
 public:
     ThreadPool(size_t threads);
     ~ThreadPool();
-
-    template<typename F>
-    void enqueue(F&& f) {
-        auto taskPtr = std::make_shared<std::packaged_task<void()>>(std::forward<F>(f));
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) -> std::future<typename std::invoke_result_t<F, Args...>> {
+        using return_type = typename std::invoke_result_t<F, Args...>;
+        auto task = std::make_shared<std::packaged_task<return_type()>>(
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+        );
+        std::future<return_type> res = task->get_future();
         {
             std::unique_lock<std::mutex> lock(queueMutex);
-            tasks.emplace([taskPtr]() { (*taskPtr)(); });
+            tasks.emplace([task]() { (*task)(); });
         }
         condition.notify_one();
+        return res;
     }
-
 private:
     std::vector<std::thread> workers;
     std::queue<std::function<void()>> tasks;
     std::mutex queueMutex;
     std::condition_variable condition;
-    std::atomic<bool> stop;
+    bool stop;
 };
+
+HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
+                              float x1, float y1, float x2, float y2);
 
 std::vector<ColumnResult> renderColumnsRange(
     int startX, int endX,
