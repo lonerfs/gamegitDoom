@@ -531,7 +531,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
 
     const int WINDOW_WIDTH = 1280;
     const int WINDOW_HEIGHT = 960;
-
+    const int MAX_PISTOL_AMMO = 120;
+    const int MAX_SHOTGUN_AMMO = 30;
     int currentLevel = startLevel;
     SaveData saveData;
 
@@ -790,10 +791,10 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         playerHealth = std::min(playerMaxHealth, playerHealth + 60);
                         std::cout << "Picked up medkit! HP: " << playerHealth << std::endl;
                     } else if (pickup.type == 2007) {
-                        pistolAmmo += 30;
+                        pistolAmmo = std::min(MAX_PISTOL_AMMO, pistolAmmo + 30);
                         std::cout << "Picked up pistol ammo! Total: " << pistolAmmo << std::endl;
                     } else if (pickup.type == 2008) {
-                        shotgunAmmo += 12;
+                        shotgunAmmo = std::min(MAX_SHOTGUN_AMMO, shotgunAmmo + 12);
                         std::cout << "Picked up shotgun ammo! Total: " << shotgunAmmo << std::endl;
                     }
                 }
@@ -1133,6 +1134,76 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_FRect dstRect = {(float)weaponX, (float)weaponY, (float)weaponW, (float)weaponH};
                 SDL_RenderTexture(renderer, currentWeaponTex->texture, &srcRect, &dstRect);
             }
+            // ========== БАРЫ ЗДОРОВЬЯ И ПАТРОНОВ (СЛЕВА СНИЗУ) ==========
+            const int BAR_X = 30;
+            const int BAR_Y = WINDOW_HEIGHT - 100;
+            const int BAR_WIDTH = 250;
+            const int BAR_HEIGHT = 25;
+            const int BAR_SPACING = 10;
+
+            // Бар здоровья
+            float healthPercent = (float)playerHealth / playerMaxHealth;
+            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255); // фон
+            SDL_FRect healthBg = { (float)BAR_X, (float)BAR_Y, (float)BAR_WIDTH, (float)BAR_HEIGHT };
+            SDL_RenderFillRect(renderer, &healthBg);
+            SDL_SetRenderDrawColor(renderer, 200, 0, 0, 255); // красный
+            SDL_FRect healthBar = { (float)BAR_X, (float)BAR_Y, (float)(BAR_WIDTH * healthPercent), (float)BAR_HEIGHT };
+            SDL_RenderFillRect(renderer, &healthBar);
+            // Рамка
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderRect(renderer, &healthBg);
+
+            // Текст здоровья
+            char healthText[32];
+            snprintf(healthText, sizeof(healthText), "HEALTH: %d", playerHealth);
+            SDL_Surface* healthSurf = TTF_RenderText_Solid(smallFont, healthText, 0, {255,255,255,255});
+            if (healthSurf) {
+                SDL_Texture* healthTex = SDL_CreateTextureFromSurface(renderer, healthSurf);
+                SDL_FRect healthRect = { (float)(BAR_X + 5), (float)(BAR_Y + 3), (float)healthSurf->w, (float)healthSurf->h };
+                SDL_RenderTexture(renderer, healthTex, NULL, &healthRect);
+                SDL_DestroyTexture(healthTex);
+                SDL_DestroySurface(healthSurf);
+            }
+
+            // Бар патронов (для текущего оружия)
+            int currentAmmo = (currentWeapon == 0) ? pistolAmmo : shotgunAmmo;
+            int maxAmmo = (currentWeapon == 0) ? MAX_PISTOL_AMMO : MAX_SHOTGUN_AMMO;
+            float ammoPercent = (float)currentAmmo / maxAmmo;
+            SDL_FRect ammoBg = { (float)BAR_X, (float)(BAR_Y + BAR_HEIGHT + BAR_SPACING), (float)BAR_WIDTH, (float)BAR_HEIGHT };
+            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
+            SDL_RenderFillRect(renderer, &ammoBg);
+            SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255); // жёлтый
+            SDL_FRect ammoBar = { (float)BAR_X, (float)(BAR_Y + BAR_HEIGHT + BAR_SPACING), (float)(BAR_WIDTH * ammoPercent), (float)BAR_HEIGHT };
+            SDL_RenderFillRect(renderer, &ammoBar);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderRect(renderer, &ammoBg);
+
+            char ammoText[32];
+            snprintf(ammoText, sizeof(ammoText), "%s: %d", (currentWeapon == 0) ? "PISTOL" : "SHOTGUN", currentAmmo);
+            SDL_Surface* ammoSurf = TTF_RenderText_Solid(smallFont, ammoText, 0, {255,255,255,255});
+            if (ammoSurf) {
+                SDL_Texture* ammoTex = SDL_CreateTextureFromSurface(renderer, ammoSurf);
+                SDL_FRect ammoRect = { (float)(BAR_X + 5), (float)(BAR_Y + BAR_HEIGHT + BAR_SPACING + 3), (float)ammoSurf->w, (float)ammoSurf->h };
+                SDL_RenderTexture(renderer, ammoTex, NULL, &ammoRect);
+                SDL_DestroyTexture(ammoTex);
+                SDL_DestroySurface(ammoSurf);
+            }
+
+            // ========== СЧЁТЧИК МОНСТРОВ (ПРАВЫЙ ВЕРХНИЙ УГОЛ) ==========
+            int aliveMobs = 0;
+            for (const auto& mob : mobs) {
+                if (mob.isAlive()) aliveMobs++;
+            }
+            char monstersText[32];
+            snprintf(monstersText, sizeof(monstersText), "MONSTERS: %d", aliveMobs);
+            SDL_Surface* monstersSurf = TTF_RenderText_Solid(smallFont, monstersText, 0, {255, 255, 255, 255});
+            if (monstersSurf) {
+                SDL_Texture* monstersTex = SDL_CreateTextureFromSurface(renderer, monstersSurf);
+                SDL_FRect monstersRect = { (float)(WINDOW_WIDTH - monstersSurf->w - 20), 20, (float)monstersSurf->w, (float)monstersSurf->h };
+                SDL_RenderTexture(renderer, monstersTex, NULL, &monstersRect);
+                SDL_DestroyTexture(monstersTex);
+                SDL_DestroySurface(monstersSurf);
+            }
 
             if (initialMobCount == 0 && mobs.empty() && !bossDying) {
                 std::string skipText = "MAP IS EMPTY! PRESS ENTER TO SKIP LEVEL.";
@@ -1194,6 +1265,7 @@ int main() {
 
     const int WINDOW_WIDTH = 1280;
     const int WINDOW_HEIGHT = 960;
+
     SDL_Window* window = SDL_CreateWindow("UNDOOM", WINDOW_WIDTH, WINDOW_HEIGHT,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) {
