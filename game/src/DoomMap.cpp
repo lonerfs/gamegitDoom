@@ -132,7 +132,6 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
         }
     }
 
-    // Если нет SIDEDEFS - создаем пустые
     if (sidedefs.empty() && !linedefs.empty()) {
         for (size_t i = 0; i < linedefs.size(); i++) {
             Sidedef sd;
@@ -148,7 +147,6 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
         std::cout << "Created " << sidedefs.size() << " empty SIDEDEFS" << std::endl;
     }
 
-    // Если нет SECTORS - создаем один сектор
     if (sectors.empty()) {
         Sector sec;
         sec.floorHeight = 0;
@@ -186,7 +184,6 @@ void DoomMap::buildGrid(int cellSize) {
         if (v.y < minY) minY = v.y;
         if (v.y > maxY) maxY = v.y;
     }
-    // расширим немного, чтобы краевые линии не вылезали
     int extend = gridCellSize;
     minX -= extend; maxX += extend;
     minY -= extend; maxY += extend;
@@ -196,20 +193,17 @@ void DoomMap::buildGrid(int cellSize) {
     cellLines.clear();
     cellLines.resize(gridCols * gridRows);
 
-    // для каждой линии добавляем её во все ячейки, которые она пересекает
     for (size_t li = 0; li < linedefs.size(); ++li) {
         const Linedef& ld = linedefs[li];
         if (ld.startVertex >= vertices.size() || ld.endVertex >= vertices.size()) continue;
         const Vertex& v1 = vertices[ld.startVertex];
         const Vertex& v2 = vertices[ld.endVertex];
-        // ограничивающий прямоугольник линии
         int x1 = (v1.x - minX) / gridCellSize;
         int y1 = (v1.y - minY) / gridCellSize;
         int x2 = (v2.x - minX) / gridCellSize;
         int y2 = (v2.y - minY) / gridCellSize;
         if (x1 > x2) std::swap(x1, x2);
         if (y1 > y2) std::swap(y1, y2);
-        // добавим линию во все ячейки, которые пересекает её AABB
         for (int cx = x1; cx <= x2; ++cx) {
             for (int cy = y1; cy <= y2; ++cy) {
                 if (cx >= 0 && cx < gridCols && cy >= 0 && cy < gridRows) {

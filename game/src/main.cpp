@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <list>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -43,7 +44,7 @@ struct Texture {
     std::vector<Uint32> pixelData;
 };
 
-// ========== АВТОСОХРАНЕНИЕ ==========
+
 struct SaveData {
     int level;
     float playerX, playerY, playerAngle;
@@ -135,7 +136,7 @@ bool loadGame(SaveData& save, const std::string& filename = "savegame.dat") {
     return true;
 }
 
-// ========== ТЕКСТУРЫ ==========
+
 Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
     Texture tex = {nullptr, 64, 64, {}};
     SDL_Surface* surf = IMG_Load(filename);
@@ -246,7 +247,7 @@ bool rayIntersectsMob(float x0, float y0, float dx, float dy,
 void performShot(float x, float y, float angle,
                  const std::vector<Linedef>& lines,
                  const std::vector<Vertex>& vertices,
-                 std::vector<Mob>& mobs,
+                 std::list<Mob>& mobs,
                  std::vector<BulletHole>& bulletHoles,
                  std::vector<HitFlash>& hitFlashes,
                  int& pistolAmmo, int& shotgunAmmo,
@@ -360,7 +361,7 @@ bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth,
     return restart;
 }
 
-bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) {
+bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight, int monsters, int ammo, int dmg) {
     bool waiting = true;
     bool restart = false;
     SDL_Event event;
@@ -374,18 +375,48 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, 
         }
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
+
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "VICTORY!", 0, SDL_Color{255,215,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 150), (float)titleSurf->w, (float)titleSurf->h};
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 200), (float)titleSurf->w, (float)titleSurf->h};
             SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-        SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{255,255,255,255});
+
+        char statText[128];
+        snprintf(statText, sizeof(statText), "Monsters Killed: %d", monsters);
+        SDL_Surface* mSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (mSurf) {
+            SDL_Texture* mTex = SDL_CreateTextureFromSurface(renderer, mSurf);
+            SDL_FRect mRect = {(float)(windowWidth/2 - mSurf->w/2), (float)(windowHeight/2 - 100), (float)mSurf->w, (float)mSurf->h};
+            SDL_RenderTexture(renderer, mTex, NULL, &mRect);
+            SDL_DestroyTexture(mTex); SDL_DestroySurface(mSurf);
+        }
+
+        snprintf(statText, sizeof(statText), "Ammo Spent: %d", ammo);
+        SDL_Surface* aSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (aSurf) {
+            SDL_Texture* aTex = SDL_CreateTextureFromSurface(renderer, aSurf);
+            SDL_FRect aRect = {(float)(windowWidth/2 - aSurf->w/2), (float)(windowHeight/2 - 60), (float)aSurf->w, (float)aSurf->h};
+            SDL_RenderTexture(renderer, aTex, NULL, &aRect);
+            SDL_DestroyTexture(aTex); SDL_DestroySurface(aSurf);
+        }
+
+        snprintf(statText, sizeof(statText), "Damage Taken: %d", dmg);
+        SDL_Surface* dSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (dSurf) {
+            SDL_Texture* dTex = SDL_CreateTextureFromSurface(renderer, dSurf);
+            SDL_FRect dRect = {(float)(windowWidth/2 - dSurf->w/2), (float)(windowHeight/2 - 20), (float)dSurf->w, (float)dSurf->h};
+            SDL_RenderTexture(renderer, dTex, NULL, &dRect);
+            SDL_DestroyTexture(dTex); SDL_DestroySurface(dSurf);
+        }
+
+        SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{150,150,150,255});
         if (restartSurf) {
             SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
-            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 50), (float)restartSurf->w, (float)restartSurf->h};
+            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 80), (float)restartSurf->w, (float)restartSurf->h};
             SDL_RenderTexture(renderer, restartTex, NULL, &textRect);
             SDL_DestroyTexture(restartTex);
             SDL_DestroySurface(restartSurf);
@@ -518,7 +549,6 @@ bool mobCollidesWithWall(float cx, float cy, float r,
     return false;
 }
 
-// ========== ОСНОВНАЯ ИГРА ==========
 bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Font* smallFont,
              const Texture& wallTex,
              const Texture& mobWalkingTex, const Texture& mobAttackTex, const Texture& mobDeathTex,
@@ -535,6 +565,10 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     const int MAX_SHOTGUN_AMMO = 30;
     int currentLevel = startLevel;
     SaveData saveData;
+
+    int totalMonstersKilled = 0;
+    int totalAmmoSpent = 0;
+    int totalDamageTaken = 0;
 
     if (isContinue && loadGame(saveData)) {
         currentLevel = saveData.level;
@@ -558,7 +592,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         Player player;
         player.speed = 280.0f;
 
-        std::vector<Mob> mobs;
+        std::list<Mob> mobs;
         std::vector<Pickup> pickups;
 
         const auto& things = gameMap.getThings();
@@ -625,7 +659,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             bool useAttackTexture = false;
             float wanderTimer = 0.0f;
             float wanderAngle = 0.0f;
-            int summonedAlive = 0;
             Mob* bossPtr = nullptr;
         };
         std::map<Mob*, MobRenderState> mobRenderStates;
@@ -725,10 +758,16 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     if (now - lastShootTime >= SHOOT_DELAY_MS) {
                         lastShootTime = now;
                         shootFlashFrames = 2;
+
+                        int ammoPrev = (currentWeapon == 0) ? pistolAmmo : shotgunAmmo;
+
                         performShot(player.x, player.y, player.angle,
                                     lines, vertices, mobs, bulletHoles, hitFlashes,
                                     pistolAmmo, shotgunAmmo, currentWeapon,
                                     playerHealth, playerMaxHealth);
+
+                        int ammoNow = (currentWeapon == 0) ? pistolAmmo : shotgunAmmo;
+                        totalAmmoSpent += (ammoPrev - ammoNow);
                     }
                 }
             }
@@ -800,7 +839,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            // ========== ОБНОВЛЕНИЕ МОБОВ ==========
+            int hpBeforeDamage = playerHealth;
+
             for (auto& mob : mobs) {
                 auto& state = mobRenderStates[&mob];
                 if (mob.isAlive() && state.isDying) {
@@ -826,24 +866,27 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     continue;
                 }
                 if (mob.type == BOSS && bossPtr != nullptr) {
-                    auto& bossState = mobRenderStates[bossPtr];
                     if (mob.summonCooldown > 0.0f) {
                         mob.summonCooldown -= dt;
                     }
-                    if (mob.summonCooldown <= 0.0f && bossState.summonedAlive < 6) {
-                        int toSpawn = std::min(2, 6 - bossState.summonedAlive);
+
+                    if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 6) {
+                        int toSpawn = std::min(2, 6 - bossPtr->summonCount);
                         if (toSpawn > 0) {
-                            bossState.attackAnimTime = 0.5f;
+                            mobRenderStates[bossPtr].attackAnimTime = 0.5f;
+
                             std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
                             for (Mob& newMob : summoned) {
                                 mobs.push_back(newMob);
                                 MobRenderState newState;
                                 newState.bossPtr = bossPtr;
                                 mobRenderStates[&mobs.back()] = newState;
-                                bossState.summonedAlive++;
+                                bossPtr->addSummon(1);
                             }
                             mob.summonCooldown = 3.0f;
-                            std::cout << "Boss summoned " << toSpawn << " minions! Total alive: " << bossState.summonedAlive << std::endl;
+
+                            std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
+                                      << bossPtr->summonCount << std::endl;
                         }
                     }
                 }
@@ -905,18 +948,23 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (playerHealth <= 0) return false;
             }
 
+            int hpLostThisFrame = hpBeforeDamage - playerHealth;
+            if (hpLostThisFrame > 0) {
+                totalDamageTaken += hpLostThisFrame;
+            }
+
             for (auto it = mobs.begin(); it != mobs.end(); ) {
                 Mob* mobPtr = &(*it);
                 auto stateIt = mobRenderStates.find(mobPtr);
                 if (stateIt != mobRenderStates.end() && !it->isAlive() && stateIt->second.isDying) {
                     stateIt->second.deathTimer -= dt;
                     if (stateIt->second.deathTimer <= 0.0f) {
+                        totalMonstersKilled++;
                         if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
-                            Mob* boss = stateIt->second.bossPtr;
-                            auto bossStateIt = mobRenderStates.find(boss);
-                            if (bossStateIt != mobRenderStates.end() && bossStateIt->second.summonedAlive > 0) {
-                                bossStateIt->second.summonedAlive--;
-                            }
+                            stateIt->second.bossPtr->removeSummon();
+                        }
+                        if (it->type == BOSS) {
+                            for(auto& pair : mobRenderStates) pair.second.bossPtr = nullptr;
                         }
                         mobRenderStates.erase(stateIt);
                         it = mobs.erase(it);
@@ -941,7 +989,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             if (bossDying && bossDeathTimer > 0) {
                 bossDeathTimer -= dt;
                 if (bossDeathTimer <= 0.0f) {
-                    showVictoryScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
+                    showVictoryScreen(renderer, font, smallFont, WINDOW_WIDTH, WINDOW_HEIGHT, totalMonstersKilled, totalAmmoSpent, totalDamageTaken);
                     return true;
                 }
             }
@@ -950,7 +998,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     bool next = showLevelCompleteScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT, currentLevel);
                     if (!next) return true;
                 } else {
-                    showVictoryScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
+                    showVictoryScreen(renderer, font, smallFont, WINDOW_WIDTH, WINDOW_HEIGHT, totalMonstersKilled, totalAmmoSpent, totalDamageTaken);
                     return true;
                 }
                 levelComplete = true;
@@ -968,7 +1016,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 else ++it;
             }
 
-            // ========== ОПТИМИЗИРОВАННЫЙ РЕНДЕР ==========
             SDL_SetRenderDrawColor(renderer, 0,0,0,255);
             SDL_RenderClear(renderer);
             SDL_SetRenderDrawColor(renderer, 26, 20, 16, 255);
@@ -999,7 +1046,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 drawWallColumn(renderer, screenX, col.wallTop, col.wallBottom, texX, wallTex, RENDER_SCALE);
             }
 
-            // Отрисовка предметов, мобов, оружия, HUD (остаётся без изменений)
             for (const auto& pickup : pickups) {
                 if (!pickup.active) continue;
                 if (!isPointVisible(player.x, player.y, pickup.x, pickup.y, lines, vertices)) continue;
@@ -1134,26 +1180,23 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_FRect dstRect = {(float)weaponX, (float)weaponY, (float)weaponW, (float)weaponH};
                 SDL_RenderTexture(renderer, currentWeaponTex->texture, &srcRect, &dstRect);
             }
-            // ========== БАРЫ ЗДОРОВЬЯ И ПАТРОНОВ (СЛЕВА СНИЗУ) ==========
+
             const int BAR_X = 30;
             const int BAR_Y = WINDOW_HEIGHT - 100;
             const int BAR_WIDTH = 250;
             const int BAR_HEIGHT = 25;
             const int BAR_SPACING = 10;
 
-            // Бар здоровья
             float healthPercent = (float)playerHealth / playerMaxHealth;
-            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255); // фон
+            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
             SDL_FRect healthBg = { (float)BAR_X, (float)BAR_Y, (float)BAR_WIDTH, (float)BAR_HEIGHT };
             SDL_RenderFillRect(renderer, &healthBg);
-            SDL_SetRenderDrawColor(renderer, 200, 0, 0, 255); // красный
+            SDL_SetRenderDrawColor(renderer, 200, 0, 0, 255);
             SDL_FRect healthBar = { (float)BAR_X, (float)BAR_Y, (float)(BAR_WIDTH * healthPercent), (float)BAR_HEIGHT };
             SDL_RenderFillRect(renderer, &healthBar);
-            // Рамка
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderRect(renderer, &healthBg);
 
-            // Текст здоровья
             char healthText[32];
             snprintf(healthText, sizeof(healthText), "HEALTH: %d", playerHealth);
             SDL_Surface* healthSurf = TTF_RenderText_Solid(smallFont, healthText, 0, {255,255,255,255});
@@ -1165,14 +1208,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_DestroySurface(healthSurf);
             }
 
-            // Бар патронов (для текущего оружия)
             int currentAmmo = (currentWeapon == 0) ? pistolAmmo : shotgunAmmo;
             int maxAmmo = (currentWeapon == 0) ? MAX_PISTOL_AMMO : MAX_SHOTGUN_AMMO;
             float ammoPercent = (float)currentAmmo / maxAmmo;
             SDL_FRect ammoBg = { (float)BAR_X, (float)(BAR_Y + BAR_HEIGHT + BAR_SPACING), (float)BAR_WIDTH, (float)BAR_HEIGHT };
             SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
             SDL_RenderFillRect(renderer, &ammoBg);
-            SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255); // жёлтый
+            SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255);
             SDL_FRect ammoBar = { (float)BAR_X, (float)(BAR_Y + BAR_HEIGHT + BAR_SPACING), (float)(BAR_WIDTH * ammoPercent), (float)BAR_HEIGHT };
             SDL_RenderFillRect(renderer, &ammoBar);
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
@@ -1189,20 +1231,35 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_DestroySurface(ammoSurf);
             }
 
-            // ========== СЧЁТЧИК МОНСТРОВ (ПРАВЫЙ ВЕРХНИЙ УГОЛ) ==========
             int aliveMobs = 0;
             for (const auto& mob : mobs) {
                 if (mob.isAlive()) aliveMobs++;
             }
+            float rightCornerY = 20.0f;
+
             char monstersText[32];
             snprintf(monstersText, sizeof(monstersText), "MONSTERS: %d", aliveMobs);
             SDL_Surface* monstersSurf = TTF_RenderText_Solid(smallFont, monstersText, 0, {255, 255, 255, 255});
             if (monstersSurf) {
                 SDL_Texture* monstersTex = SDL_CreateTextureFromSurface(renderer, monstersSurf);
-                SDL_FRect monstersRect = { (float)(WINDOW_WIDTH - monstersSurf->w - 20), 20, (float)monstersSurf->w, (float)monstersSurf->h };
+                SDL_FRect monstersRect = { (float)(WINDOW_WIDTH - monstersSurf->w - 20), rightCornerY, (float)monstersSurf->w, (float)monstersSurf->h };
                 SDL_RenderTexture(renderer, monstersTex, NULL, &monstersRect);
                 SDL_DestroyTexture(monstersTex);
                 SDL_DestroySurface(monstersSurf);
+            }
+
+            char achText[64];
+            if (currentLevel == 1) snprintf(achText, sizeof(achText), "LEVELS CLEARED: NONE");
+            else if (currentLevel == 2) snprintf(achText, sizeof(achText), "LEVELS CLEARED: 1");
+            else snprintf(achText, sizeof(achText), "LEVELS CLEARED: 1, 2");
+
+            SDL_Surface* achSurf = TTF_RenderText_Solid(smallFont, achText, 0, {255, 215, 0, 255});
+            if (achSurf) {
+                SDL_Texture* achTex = SDL_CreateTextureFromSurface(renderer, achSurf);
+                SDL_FRect achRect = { (float)(WINDOW_WIDTH - achSurf->w - 20), rightCornerY + 25.0f, (float)achSurf->w, (float)achSurf->h };
+                SDL_RenderTexture(renderer, achTex, NULL, &achRect);
+                SDL_DestroyTexture(achTex);
+                SDL_DestroySurface(achSurf);
             }
 
             if (initialMobCount == 0 && mobs.empty() && !bossDying) {
@@ -1217,10 +1274,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            std::string hudText = "HP: " + std::to_string(playerHealth) + "  ";
-            if (currentWeapon == 0) hudText += "PISTOL (" + std::to_string(pistolAmmo) + ")";
-            else hudText += "SHOTGUN (" + std::to_string(shotgunAmmo) + ")";
-            hudText += "  FPS: " + std::to_string(currentFPS);
+            std::string hudText = "FPS: " + std::to_string(currentFPS);
             SDL_Surface* hudSurf = TTF_RenderText_Solid(smallFont, hudText.c_str(), 0, {255,255,255,255});
             if (hudSurf) {
                 SDL_Texture* hudTex = SDL_CreateTextureFromSurface(renderer, hudSurf);
@@ -1249,7 +1303,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     return true;
 }
 
-// ========== MAIN ==========
+
+extern void initTrigTables();
+
 int main() {
     initTrigTables();
 

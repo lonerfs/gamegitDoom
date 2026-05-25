@@ -35,6 +35,7 @@ struct Mob {
 
     float summonCooldown;
     bool isSummoning;
+    int summonCount;
 
     float attackRange;
     float shootRange;
@@ -48,7 +49,8 @@ struct Mob {
     Mob(float _x, float _y, MobType _type) : x(_x), y(_y), type(_type), state(IDLE),
         attackCooldown(0.0f), fireCooldown(0.0f), awakened(false),
         dodgeTimer(0.0f), dodgeAngle(0.0f), summonCooldown(0.0f), isSummoning(false),
-        wanderTimer(0.0f), wanderAngle(0.0f), wanderSpeed(30.0f)
+        wanderTimer(0.0f), wanderAngle(0.0f), wanderSpeed(30.0f),
+        summonCount(0)        // инициализация счётчика миньонов
     {
         switch(_type) {
             case ZOMBIE:
@@ -71,12 +73,16 @@ struct Mob {
                 projectileSpeed = 500.0f;
                 projectileDamage = 25;
                 fireCooldown = 0.0f;
-                summonCooldown = 2.0f;  // Быстрый первый призыв
+                summonCooldown = 2.0f;
                 isSummoning = false;
                 wanderSpeed = 140.0f;
                 break;
         }
     }
+
+    void addSummon(int count = 1) { summonCount += count; }
+
+    void removeSummon() { if (summonCount > 0) summonCount--; }
 
     bool hasLineOfSight(float tx, float ty, const std::vector<Linedef>& lines, const std::vector<Vertex>& vertices) const {
         float dx = tx - x;
@@ -206,6 +212,10 @@ struct Mob {
     }
 
     void takeDamage(int dmg) {
+        if (type == BOSS && summonCount > 0) {
+            std::cout << "Boss is protected by minions! (" << summonCount << " alive)" << std::endl;
+            return;
+        }
         hp -= dmg;
         if (hp < 0) hp = 0;
         awakened = true;
