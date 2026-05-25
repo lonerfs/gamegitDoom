@@ -425,7 +425,7 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, 
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) return false;
             if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.scancode == SDL_SCANCODE_R) { restart = true; waiting = false; }
+                if (event.key.scancode == SDL_SCANCODE_R || event.key.scancode == SDL_SCANCODE_RETURN) { restart = true; waiting = false; }
                 if (event.key.scancode == SDL_SCANCODE_ESCAPE) return false;
             }
         }
@@ -439,7 +439,7 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, 
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-        SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R to restart the game", 0, SDL_Color{255,255,255,255});
+        SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{255,255,255,255});
         if (restartSurf) {
             SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
             SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 50), (float)restartSurf->w, (float)restartSurf->h};
@@ -659,6 +659,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             }
         }
 
+        // ЗАПОМИНАЕМ, СКОЛЬКО МОБОВ БЫЛО ПРИ ЗАГРУЗКЕ
+        int initialMobCount = mobs.size();
+
         int playerHealth = 100;
         int pistolAmmo = 120;
         int shotgunAmmo = 30;
@@ -689,7 +692,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         };
         std::map<Mob*, MobRenderState> mobRenderStates;
 
-        // Находим босса и запоминаем его указатель
         Mob* bossPtr = nullptr;
         for (auto& mob : mobs) {
             if (mob.type == BOSS) {
@@ -769,6 +771,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 lastFpsTime = now;
             }
 
+            const bool* keys = SDL_GetKeyboardState(nullptr);
+
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_EVENT_QUIT) { levelComplete = true; return false; }
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) { levelComplete = true; return false; }
@@ -791,7 +795,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            const bool* keys = SDL_GetKeyboardState(nullptr);
             float move = player.speed * dt;
             float turn = 4.0f * dt;
             float dx = 0, dy = 0;
@@ -899,11 +902,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         mob.summonCooldown -= dt;
                     }
 
-                    // Призыв каждые 3 секунды, максимум 6 миньонов одновременно
                     if (mob.summonCooldown <= 0.0f && bossState.summonedAlive < 6) {
                         int toSpawn = std::min(2, 6 - bossState.summonedAlive);
                         if (toSpawn > 0) {
-                            // Активируем текстуру атаки босса при призыве
                             bossState.attackAnimTime = 0.5f;
 
                             std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
@@ -982,20 +983,17 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (playerHealth <= 0) return false;
             }
 
-            // Удаление мёртвых мобов
             for (auto it = mobs.begin(); it != mobs.end(); ) {
                 Mob* mobPtr = &(*it);
                 auto stateIt = mobRenderStates.find(mobPtr);
                 if (stateIt != mobRenderStates.end() && !it->isAlive() && stateIt->second.isDying) {
                     stateIt->second.deathTimer -= dt;
                     if (stateIt->second.deathTimer <= 0.0f) {
-                        // Если это призванный зомби
                         if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
                             Mob* boss = stateIt->second.bossPtr;
                             auto bossStateIt = mobRenderStates.find(boss);
                             if (bossStateIt != mobRenderStates.end() && bossStateIt->second.summonedAlive > 0) {
                                 bossStateIt->second.summonedAlive--;
-                                std::cout << "Minion killed! Remaining: " << bossStateIt->second.summonedAlive << std::endl;
                             }
                         }
                         mobRenderStates.erase(stateIt);
@@ -1008,21 +1006,38 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            // Проверка смерти босса
-            if (bossDying && bossDeathTimer > 0) {
-                bossDeathTimer -= dt;
-                if (bossDeathTimer <= 0.0f) {
-                    bool restart = showVictoryScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
-                    if (!restart) {
-                        return false;
-                    } else {
-                        return true;
+            // ========== НОВАЯ ЛОГИКА ЗАВЕРШЕНИЯ УРОВНЯ ==========
+            bool readyToExit = false;
+            if (mobs.empty() && !bossDying) {
+                if (initialMobCount > 0) {
+                    readyToExit = true; // Убили всех мобов
+                } else {
+                    // Мобов на карте не было изначально. Выходим только по нажатию ENTER
+                    if (keys[SDL_SCANCODE_RETURN]) {
+                        readyToExit = true;
                     }
                 }
             }
 
-            // Проверка завершения уровня
-            if (mobs.empty() && !bossDying) {
+            // Проверка смерти босса
+            if (bossDying && bossDeathTimer > 0) {
+                bossDeathTimer -= dt;
+                if (bossDeathTimer <= 0.0f) {
+                    showVictoryScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
+                    return true; // Возвращаемся в главное меню
+                }
+            }
+
+            // Переход между уровнями
+            if (readyToExit) {
+                if (currentLevel < 3) {
+                    bool next = showLevelCompleteScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT, currentLevel);
+                    if (!next) return true; // Игрок нажал ESC -> выходим в главное меню без Game Over
+                } else {
+                    // На случай, если босса вообще не было на 3 уровне
+                    showVictoryScreen(renderer, font, WINDOW_WIDTH, WINDOW_HEIGHT);
+                    return true;
+                }
                 levelComplete = true;
                 break;
             }
@@ -1211,6 +1226,19 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_FRect srcRect = {0, 0, (float)currentWeaponTex->width, (float)currentWeaponTex->height};
                 SDL_FRect dstRect = {(float)weaponX, (float)weaponY, (float)weaponW, (float)weaponH};
                 SDL_RenderTexture(renderer, currentWeaponTex->texture, &srcRect, &dstRect);
+            }
+
+            // ПРЕДУПРЕЖДЕНИЕ О ПУСТОЙ КАРТЕ
+            if (initialMobCount == 0 && mobs.empty() && !bossDying) {
+                std::string skipText = "MAP IS EMPTY! PRESS ENTER TO SKIP LEVEL.";
+                SDL_Surface* skipSurf = TTF_RenderText_Solid(font, skipText.c_str(), 0, {255, 255, 0, 255});
+                if (skipSurf) {
+                    SDL_Texture* skipTex = SDL_CreateTextureFromSurface(renderer, skipSurf);
+                    SDL_FRect skipRect = {(float)(WINDOW_WIDTH/2 - skipSurf->w/2), 120.0f, (float)skipSurf->w, (float)skipSurf->h};
+                    SDL_RenderTexture(renderer, skipTex, NULL, &skipRect);
+                    SDL_DestroyTexture(skipTex);
+                    SDL_DestroySurface(skipSurf);
+                }
             }
 
             std::string hudText = "HP: " + std::to_string(playerHealth) + "  ";
