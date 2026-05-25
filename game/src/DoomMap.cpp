@@ -69,6 +69,7 @@ bool DoomMap::loadFromWad(const WadLoader& wad, const std::string& mapName) {
               << vertices.size() << " verts, "
               << linedefs.size() << " lines" << std::endl;
 
+    buildGrid();
     return !vertices.empty();
 }
 
@@ -167,5 +168,65 @@ bool DoomMap::loadFromTextFile(const std::string& filename) {
               << " Sec=" << sectors.size()
               << " T=" << things.size() << std::endl;
 
+    buildGrid();
     return !vertices.empty();
+}
+
+void DoomMap::buildGrid(int cellSize) {
+    if (vertices.empty()) return;
+    gridCellSize = cellSize;
+    // находим границы карты
+    minX = vertices[0].x;
+    maxX = vertices[0].x;
+    minY = vertices[0].y;
+    maxY = vertices[0].y;
+    for (const auto& v : vertices) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+    }
+    // расширим немного, чтобы краевые линии не вылезали
+    int extend = gridCellSize;
+    minX -= extend; maxX += extend;
+    minY -= extend; maxY += extend;
+
+    gridCols = (maxX - minX) / gridCellSize + 2;
+    gridRows = (maxY - minY) / gridCellSize + 2;
+    cellLines.clear();
+    cellLines.resize(gridCols * gridRows);
+
+    // для каждой линии добавляем её во все ячейки, которые она пересекает
+    for (size_t li = 0; li < linedefs.size(); ++li) {
+        const Linedef& ld = linedefs[li];
+        if (ld.startVertex >= vertices.size() || ld.endVertex >= vertices.size()) continue;
+        const Vertex& v1 = vertices[ld.startVertex];
+        const Vertex& v2 = vertices[ld.endVertex];
+        // ограничивающий прямоугольник линии
+        int x1 = (v1.x - minX) / gridCellSize;
+        int y1 = (v1.y - minY) / gridCellSize;
+        int x2 = (v2.x - minX) / gridCellSize;
+        int y2 = (v2.y - minY) / gridCellSize;
+        if (x1 > x2) std::swap(x1, x2);
+        if (y1 > y2) std::swap(y1, y2);
+        // добавим линию во все ячейки, которые пересекает её AABB
+        for (int cx = x1; cx <= x2; ++cx) {
+            for (int cy = y1; cy <= y2; ++cy) {
+                if (cx >= 0 && cx < gridCols && cy >= 0 && cy < gridRows) {
+                    cellLines[cy * gridCols + cx].push_back((int)li);
+                }
+            }
+        }
+    }
+    std::cout << "Built grid: " << gridCols << "x" << gridRows << " cells, cell size " << gridCellSize << std::endl;
+}
+
+const std::vector<int>& DoomMap::getLinesInCell(float x, float y) const {
+    int cx = (int)((x - minX) / gridCellSize);
+    int cy = (int)((y - minY) / gridCellSize);
+    if (cx < 0) cx = 0;
+    if (cx >= gridCols) cx = gridCols - 1;
+    if (cy < 0) cy = 0;
+    if (cy >= gridRows) cy = gridRows - 1;
+    return cellLines[cy * gridCols + cx];
 }

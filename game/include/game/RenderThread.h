@@ -57,12 +57,12 @@ private:
 HitResult rayLineIntersection(float x0, float y0, float dx, float dy,
                               float x1, float y1, float x2, float y2);
 
-std::vector<ColumnResult> renderColumnsRange(
+void initTrigTables();
+
+void renderColumnsRangeDirect(
     int startX, int endX,
+    std::vector<ColumnResult>& outColumns,
     const Player& player,
-    const std::vector<Linedef>& lines,
-    const std::vector<Vertex>& vertices,
-    const std::vector<Sidedef>& sidedefs,
-    const std::vector<Sector>& sectors,
+    const DoomMap& map,
     int screenWidth, int screenHeight
 );

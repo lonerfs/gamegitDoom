@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <algorithm>
 
 class WadLoader;
 
@@ -71,7 +72,20 @@ public:
         sidedefs.clear();
         sectors.clear();
         things.clear();
+        cellLines.clear();
+        minX = minY = maxX = maxY = 0;
     }
+
+    // Пространственная оптимизация: сетка
+    void buildGrid(int gridCellSize = 256);
+    const std::vector<int>& getLinesInCell(float x, float y) const;
+    int getMinX() const { return minX; }
+    int getMaxX() const { return maxX; }
+    int getMinY() const { return minY; }
+    int getMaxY() const { return maxY; }
+    int getGridCols() const { return gridCols; }
+    int getGridRows() const { return gridRows; }
+    int getGridCellSize() const { return gridCellSize; }
 
 private:
     std::vector<Vertex> vertices;
@@ -79,4 +93,10 @@ private:
     std::vector<Sidedef> sidedefs;
     std::vector<Sector> sectors;
     std::vector<Thing> things;
+
+    // для сетки
+    int gridCellSize = 256;
+    int minX = 0, maxX = 0, minY = 0, maxY = 0;
+    int gridCols = 0, gridRows = 0;
+    std::vector<std::vector<int>> cellLines; // [col + row*gridCols] -> list of linedef indices
 };
