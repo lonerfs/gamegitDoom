@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <optional>
-#include <SDL3/SDL.h> // Для Uint32
+#include <SDL3/SDL.h>
 #include "game/DoomMap.h"
 #include "game/Player.h"
 
@@ -57,7 +57,7 @@ struct Mob {
     {
         switch(_type) {
             case ZOMBIE:
-                hp = 50; maxHp = 50;
+                hp = 100; maxHp = 100;
                 speed = 320.0f;
                 size = 56;
                 attackRange = 80.0f;
@@ -206,7 +206,7 @@ struct Mob {
         float dist = std::sqrt(dx*dx + dy*dy);
 
         if (dist < attackRange && attackCooldown <= 0.0f) {
-            int damage = (type == BOSS) ? 20 : 15; // БАЛАНСИРОВКА УРОНА ВБЛИЗИ
+            int damage = (type == BOSS) ? 30 : 20;
             playerHealth -= damage;
             attackCooldown = 1.5f;
             if (playerHealth < 0) playerHealth = 0;

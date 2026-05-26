@@ -76,21 +76,24 @@ void loadSettings() {
 }
 
 struct SaveData {
-    int level;
-    float playerX, playerY, playerAngle;
-    int playerHealth;
-    int pistolAmmo, shotgunAmmo;
-    int pistolMag, shotgunMag;
-    int currentWeapon;
+    int level = 1;
+    float playerX = 0, playerY = 0, playerAngle = 0;
+    int playerHealth = 100;
+    int pistolAmmo = 30, shotgunAmmo = 8;
+    int pistolMag = 7, shotgunMag = 2;
+    int currentWeapon = 0;
     std::vector<std::tuple<float, float, int, int>> mobs;
     std::vector<std::tuple<float, float, int, bool>> pickups;
-    int totalMonstersKilled;
-    int totalAmmoSpent;
-    int totalDamageTaken;
-    int totalShotsFired;
-    int totalBossesKilled;
-    int totalMedkitsPicked;
-    int totalAmmoPicked;
+    int totalMonstersKilled = 0;
+    int totalAmmoSpent = 0;
+    int totalDamageTaken = 0;
+    int totalShotsFired = 0;
+    int totalBossesKilled = 0;
+    int totalMedkitsPicked = 0;
+    int totalAmmoPicked = 0;
+    int totalMonstersEncountered = 0;
+    int totalLevelsCompleted = 0;
+    bool achLevel1 = false, achLevel2 = false, achLevel3 = false, achBossKilled = false, achKill50 = false;
 };
 
 void saveGame(const SaveData& save, const std::string& filename = "savegame.dat") {
@@ -116,6 +119,13 @@ void saveGame(const SaveData& save, const std::string& filename = "savegame.dat"
     file.write((char*)&save.totalBossesKilled, sizeof(save.totalBossesKilled));
     file.write((char*)&save.totalMedkitsPicked, sizeof(save.totalMedkitsPicked));
     file.write((char*)&save.totalAmmoPicked, sizeof(save.totalAmmoPicked));
+    file.write((char*)&save.totalMonstersEncountered, sizeof(save.totalMonstersEncountered));
+    file.write((char*)&save.totalLevelsCompleted, sizeof(save.totalLevelsCompleted));
+    file.write((char*)&save.achLevel1, sizeof(save.achLevel1));
+    file.write((char*)&save.achLevel2, sizeof(save.achLevel2));
+    file.write((char*)&save.achLevel3, sizeof(save.achLevel3));
+    file.write((char*)&save.achBossKilled, sizeof(save.achBossKilled));
+    file.write((char*)&save.achKill50, sizeof(save.achKill50));
 
     size_t mobCount = save.mobs.size();
     file.write((char*)&mobCount, sizeof(mobCount));
@@ -146,48 +156,57 @@ bool loadGame(SaveData& save, const std::string& filename = "savegame.dat") {
     std::ifstream file(filename, std::ios::binary);
     if (!file) return false;
 
-    file.read((char*)&save.level, sizeof(save.level));
-    file.read((char*)&save.playerX, sizeof(save.playerX));
-    file.read((char*)&save.playerY, sizeof(save.playerY));
-    file.read((char*)&save.playerAngle, sizeof(save.playerAngle));
-    file.read((char*)&save.playerHealth, sizeof(save.playerHealth));
-    file.read((char*)&save.pistolAmmo, sizeof(save.pistolAmmo));
-    file.read((char*)&save.shotgunAmmo, sizeof(save.shotgunAmmo));
-    file.read((char*)&save.pistolMag, sizeof(save.pistolMag));
-    file.read((char*)&save.shotgunMag, sizeof(save.shotgunMag));
-    file.read((char*)&save.currentWeapon, sizeof(save.currentWeapon));
-    file.read((char*)&save.totalMonstersKilled, sizeof(save.totalMonstersKilled));
-    file.read((char*)&save.totalAmmoSpent, sizeof(save.totalAmmoSpent));
-    file.read((char*)&save.totalDamageTaken, sizeof(save.totalDamageTaken));
-    file.read((char*)&save.totalShotsFired, sizeof(save.totalShotsFired));
-    file.read((char*)&save.totalBossesKilled, sizeof(save.totalBossesKilled));
-    file.read((char*)&save.totalMedkitsPicked, sizeof(save.totalMedkitsPicked));
-    file.read((char*)&save.totalAmmoPicked, sizeof(save.totalAmmoPicked));
+    SaveData tmp;
+    if (!file.read((char*)&tmp.level, sizeof(tmp.level))) return false;
+    if (!file.read((char*)&tmp.playerX, sizeof(tmp.playerX))) return false;
+    if (!file.read((char*)&tmp.playerY, sizeof(tmp.playerY))) return false;
+    if (!file.read((char*)&tmp.playerAngle, sizeof(tmp.playerAngle))) return false;
+    if (!file.read((char*)&tmp.playerHealth, sizeof(tmp.playerHealth))) return false;
+    if (!file.read((char*)&tmp.pistolAmmo, sizeof(tmp.pistolAmmo))) return false;
+    if (!file.read((char*)&tmp.shotgunAmmo, sizeof(tmp.shotgunAmmo))) return false;
+    if (!file.read((char*)&tmp.pistolMag, sizeof(tmp.pistolMag))) return false;
+    if (!file.read((char*)&tmp.shotgunMag, sizeof(tmp.shotgunMag))) return false;
+    if (!file.read((char*)&tmp.currentWeapon, sizeof(tmp.currentWeapon))) return false;
+    if (!file.read((char*)&tmp.totalMonstersKilled, sizeof(tmp.totalMonstersKilled))) return false;
+    if (!file.read((char*)&tmp.totalAmmoSpent, sizeof(tmp.totalAmmoSpent))) return false;
+    if (!file.read((char*)&tmp.totalDamageTaken, sizeof(tmp.totalDamageTaken))) return false;
+    if (!file.read((char*)&tmp.totalShotsFired, sizeof(tmp.totalShotsFired))) return false;
+    if (!file.read((char*)&tmp.totalBossesKilled, sizeof(tmp.totalBossesKilled))) return false;
+    if (!file.read((char*)&tmp.totalMedkitsPicked, sizeof(tmp.totalMedkitsPicked))) return false;
+    if (!file.read((char*)&tmp.totalAmmoPicked, sizeof(tmp.totalAmmoPicked))) return false;
+    if (!file.read((char*)&tmp.totalMonstersEncountered, sizeof(tmp.totalMonstersEncountered))) return false;
+    if (!file.read((char*)&tmp.totalLevelsCompleted, sizeof(tmp.totalLevelsCompleted))) return false;
+    if (!file.read((char*)&tmp.achLevel1, sizeof(tmp.achLevel1))) return false;
+    if (!file.read((char*)&tmp.achLevel2, sizeof(tmp.achLevel2))) return false;
+    if (!file.read((char*)&tmp.achLevel3, sizeof(tmp.achLevel3))) return false;
+    if (!file.read((char*)&tmp.achBossKilled, sizeof(tmp.achBossKilled))) return false;
+    if (!file.read((char*)&tmp.achKill50, sizeof(tmp.achKill50))) return false;
 
     size_t mobCount;
-    file.read((char*)&mobCount, sizeof(mobCount));
-    save.mobs.clear();
-    for (size_t i = 0; i < mobCount; i++) {
+    if (!file.read((char*)&mobCount, sizeof(mobCount))) return false;
+    tmp.mobs.clear();
+    for (size_t i = 0; i < mobCount; ++i) {
         float x, y; int type, hp;
-        file.read((char*)&x, sizeof(x));
-        file.read((char*)&y, sizeof(y));
-        file.read((char*)&type, sizeof(type));
-        file.read((char*)&hp, sizeof(hp));
-        save.mobs.emplace_back(x, y, type, hp);
+        if (!file.read((char*)&x, sizeof(x))) return false;
+        if (!file.read((char*)&y, sizeof(y))) return false;
+        if (!file.read((char*)&type, sizeof(type))) return false;
+        if (!file.read((char*)&hp, sizeof(hp))) return false;
+        tmp.mobs.emplace_back(x, y, type, hp);
     }
 
     size_t pickupCount;
-    file.read((char*)&pickupCount, sizeof(pickupCount));
-    save.pickups.clear();
-    for (size_t i = 0; i < pickupCount; i++) {
+    if (!file.read((char*)&pickupCount, sizeof(pickupCount))) return false;
+    tmp.pickups.clear();
+    for (size_t i = 0; i < pickupCount; ++i) {
         float x, y; int type; bool active;
-        file.read((char*)&x, sizeof(x));
-        file.read((char*)&y, sizeof(y));
-        file.read((char*)&type, sizeof(type));
-        file.read((char*)&active, sizeof(active));
-        save.pickups.emplace_back(x, y, type, active);
+        if (!file.read((char*)&x, sizeof(x))) return false;
+        if (!file.read((char*)&y, sizeof(y))) return false;
+        if (!file.read((char*)&type, sizeof(type))) return false;
+        if (!file.read((char*)&active, sizeof(active))) return false;
+        tmp.pickups.emplace_back(x, y, type, active);
     }
-    file.close();
+
+    save = std::move(tmp);
     std::cout << "Game loaded from level " << save.level << std::endl;
     return true;
 }
@@ -426,6 +445,253 @@ bool isPointVisible(float px, float py, float tx, float ty,
     return true;
 }
 
+void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight,
+                          const SaveData& stats) {
+    bool waiting = true;
+    SDL_Event event;
+    while (waiting) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) { waiting = false; }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_SPACE || event.key.scancode == SDL_SCANCODE_ESCAPE) {
+                    waiting = false;
+                }
+            }
+        }
+        SDL_SetRenderDrawColor(renderer, 0,0,0,255);
+        SDL_RenderClear(renderer);
+
+        SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "GAME OVER", 0, SDL_Color{255,0,0,255});
+        if (titleSurf) {
+            SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), 40, (float)titleSurf->w, (float)titleSurf->h};
+            SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
+            SDL_DestroyTexture(titleTex);
+            SDL_DestroySurface(titleSurf);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 255,215,0,255);
+        SDL_FRect mainRect = {(float)(windowWidth/2 - 360), (float)(windowHeight/2 - 220), 720, 440};
+        SDL_RenderRect(renderer, &mainRect);
+
+        int xLeft = windowWidth/2 - 340;
+        int yPos = windowHeight/2 - 180;
+        int lineHeight = 28;
+
+        auto drawStatLine = [&](const std::string& label, int value, int xOff = 0) {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%s: %d", label.c_str(), value);
+            SDL_Surface* surf = TTF_RenderText_Solid(smallFont, buf, 0, {255,255,255,255});
+            if (surf) {
+                SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+                SDL_FRect rect = {(float)(xLeft + xOff), (float)yPos, (float)surf->w, (float)surf->h};
+                SDL_RenderTexture(renderer, tex, NULL, &rect);
+                SDL_DestroyTexture(tex);
+                SDL_DestroySurface(surf);
+            }
+            yPos += lineHeight;
+        };
+
+        SDL_Surface* cat1 = TTF_RenderText_Solid(smallFont, "=== COMBAT STATS ===", 0, SDL_Color{255,215,0,255});
+        if (cat1) {
+            SDL_Texture* cat1Tex = SDL_CreateTextureFromSurface(renderer, cat1);
+            SDL_FRect cat1Rect = {(float)xLeft, (float)yPos, (float)cat1->w, (float)cat1->h};
+            SDL_RenderTexture(renderer, cat1Tex, NULL, &cat1Rect);
+            SDL_DestroyTexture(cat1Tex);
+            SDL_DestroySurface(cat1);
+            yPos += lineHeight;
+        }
+        drawStatLine("Monsters Killed", stats.totalMonstersKilled);
+        drawStatLine("Bosses Killed", stats.totalBossesKilled);
+        drawStatLine("Damage Taken", stats.totalDamageTaken);
+        drawStatLine("Levels Completed", stats.totalLevelsCompleted);
+        yPos += 10;
+
+        SDL_Surface* cat2 = TTF_RenderText_Solid(smallFont, "=== WEAPON STATS ===", 0, SDL_Color{255,215,0,255});
+        if (cat2) {
+            SDL_Texture* cat2Tex = SDL_CreateTextureFromSurface(renderer, cat2);
+            SDL_FRect cat2Rect = {(float)xLeft, (float)yPos, (float)cat2->w, (float)cat2->h};
+            SDL_RenderTexture(renderer, cat2Tex, NULL, &cat2Rect);
+            SDL_DestroyTexture(cat2Tex);
+            SDL_DestroySurface(cat2);
+            yPos += lineHeight;
+        }
+        drawStatLine("Shots Fired", stats.totalShotsFired);
+        drawStatLine("Ammo Spent", stats.totalAmmoSpent);
+        float accuracy = (stats.totalShotsFired > 0) ? (float)stats.totalMonstersKilled * 100.0f / stats.totalShotsFired : 0.0f;
+        char accBuf[128];
+        snprintf(accBuf, sizeof(accBuf), "Accuracy: %.1f%%", accuracy);
+        SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, accBuf, 0, {255,255,255,255});
+        if (accSurf) {
+            SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf);
+            SDL_FRect accRect = {(float)xLeft, (float)yPos, (float)accSurf->w, (float)accSurf->h};
+            SDL_RenderTexture(renderer, accTex, NULL, &accRect);
+            SDL_DestroyTexture(accTex);
+            SDL_DestroySurface(accSurf);
+            yPos += lineHeight;
+        }
+        yPos += 10;
+
+        SDL_Surface* cat3 = TTF_RenderText_Solid(smallFont, "=== PICKUPS ===", 0, SDL_Color{255,215,0,255});
+        if (cat3) {
+            SDL_Texture* cat3Tex = SDL_CreateTextureFromSurface(renderer, cat3);
+            SDL_FRect cat3Rect = {(float)xLeft, (float)yPos, (float)cat3->w, (float)cat3->h};
+            SDL_RenderTexture(renderer, cat3Tex, NULL, &cat3Rect);
+            SDL_DestroyTexture(cat3Tex);
+            SDL_DestroySurface(cat3);
+            yPos += lineHeight;
+        }
+        drawStatLine("Medkits Picked", stats.totalMedkitsPicked);
+        drawStatLine("Ammo Pickups", stats.totalAmmoPicked);
+
+        yPos += 10;
+        if (stats.totalMonstersEncountered > 0) {
+            float killRate = (float)stats.totalMonstersKilled / stats.totalMonstersEncountered * 100.0f;
+            char krBuf[128];
+            snprintf(krBuf, sizeof(krBuf), "Kill Rate: %.1f%% (%d/%d)", killRate, stats.totalMonstersKilled, stats.totalMonstersEncountered);
+            SDL_Surface* krSurf = TTF_RenderText_Solid(smallFont, krBuf, 0, {255,255,255,255});
+            if (krSurf) {
+                SDL_Texture* krTex = SDL_CreateTextureFromSurface(renderer, krSurf);
+                SDL_FRect krRect = {(float)xLeft, (float)yPos, (float)krSurf->w, (float)krSurf->h};
+                SDL_RenderTexture(renderer, krTex, NULL, &krRect);
+                SDL_DestroyTexture(krTex);
+                SDL_DestroySurface(krSurf);
+                yPos += lineHeight;
+            }
+        }
+
+        SDL_Surface* continueSurf = TTF_RenderText_Solid(font, "Press ENTER or ESC to continue", 0, SDL_Color{150,150,150,255});
+        if (continueSurf) {
+            SDL_Texture* continueTex = SDL_CreateTextureFromSurface(renderer, continueSurf);
+            SDL_FRect textRect = {(float)(windowWidth/2 - continueSurf->w/2), (float)(windowHeight/2 + 200), (float)continueSurf->w, (float)continueSurf->h};
+            SDL_RenderTexture(renderer, continueTex, NULL, &textRect);
+            SDL_DestroyTexture(continueTex);
+            SDL_DestroySurface(continueSurf);
+        }
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+}
+
+void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight) {
+    SaveData save;
+    bool hasSave = loadGame(save);
+
+    bool waiting = true;
+    SDL_Event event;
+    while (waiting) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) { waiting = false; }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.scancode == SDL_SCANCODE_ESCAPE || event.key.scancode == SDL_SCANCODE_RETURN) {
+                    waiting = false;
+                }
+            }
+        }
+        SDL_SetRenderDrawColor(renderer, 0,0,0,255);
+        SDL_RenderClear(renderer);
+
+        SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "ACHIEVEMENTS", 0, SDL_Color{255,215,0,255});
+        if (titleSurf) {
+            SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), 40, (float)titleSurf->w, (float)titleSurf->h};
+            SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
+            SDL_DestroyTexture(titleTex);
+            SDL_DestroySurface(titleSurf);
+        }
+
+        SDL_SetRenderDrawColor(renderer, 255,215,0,255);
+        SDL_FRect borderRect = {(float)(windowWidth/2 - 320), (float)(windowHeight/2 - 200), 640, 380};
+        SDL_RenderRect(renderer, &borderRect);
+
+        struct Achievement {
+            std::string name;
+            bool unlocked;
+        };
+        std::vector<Achievement> achievements = {
+            {"Level 1 Completed", hasSave ? save.achLevel1 : false},
+            {"Level 2 Completed", hasSave ? save.achLevel2 : false},
+            {"Level 3 Completed", hasSave ? save.achLevel3 : false},
+            {"Boss Slayer", hasSave ? save.achBossKilled : false},
+            {"Zombie Hunter (50 kills)", hasSave ? save.achKill50 : false}
+        };
+
+        int yStart = windowHeight/2 - 120;
+        for (size_t i = 0; i < achievements.size(); ++i) {
+            std::string displayText = achievements[i].unlocked ? "✓ " + achievements[i].name : "✗ " + achievements[i].name;
+            SDL_Color color = achievements[i].unlocked ? SDL_Color{0,255,0,255} : SDL_Color{150,150,150,255};
+            SDL_Surface* achSurf = TTF_RenderText_Solid(smallFont, displayText.c_str(), 0, color);
+            if (achSurf) {
+                SDL_Texture* achTex = SDL_CreateTextureFromSurface(renderer, achSurf);
+                SDL_FRect achRect = {(float)(windowWidth/2 - achSurf->w/2), (float)(yStart + i * 45), (float)achSurf->w, (float)achSurf->h};
+                SDL_RenderTexture(renderer, achTex, NULL, &achRect);
+                SDL_DestroyTexture(achTex);
+                SDL_DestroySurface(achSurf);
+            }
+        }
+
+        if (hasSave) {
+            int yStats = yStart + achievements.size() * 45 + 20;
+            SDL_Surface* statsHeader = TTF_RenderText_Solid(smallFont, "SESSION STATS", 0, SDL_Color{255,215,0,255});
+            if (statsHeader) {
+                SDL_Texture* statsTex = SDL_CreateTextureFromSurface(renderer, statsHeader);
+                SDL_FRect statsRect = {(float)(windowWidth/2 - statsHeader->w/2), (float)yStats, (float)statsHeader->w, (float)statsHeader->h};
+                SDL_RenderTexture(renderer, statsTex, NULL, &statsRect);
+                SDL_DestroyTexture(statsTex);
+                SDL_DestroySurface(statsHeader);
+                yStats += 30;
+            }
+
+            char totalStats[256];
+            snprintf(totalStats, sizeof(totalStats), "Total Kills: %d   |   Total Bosses: %d   |   Total Damage: %d",
+                     save.totalMonstersKilled, save.totalBossesKilled, save.totalDamageTaken);
+            SDL_Surface* statsSurf = TTF_RenderText_Solid(smallFont, totalStats, 0, {200,200,200,255});
+            if (statsSurf) {
+                SDL_Texture* statsTex = SDL_CreateTextureFromSurface(renderer, statsSurf);
+                SDL_FRect statsRect = {(float)(windowWidth/2 - statsSurf->w/2), (float)yStats, (float)statsSurf->w, (float)statsSurf->h};
+                SDL_RenderTexture(renderer, statsTex, NULL, &statsRect);
+                SDL_DestroyTexture(statsTex);
+                SDL_DestroySurface(statsSurf);
+                yStats += 25;
+            }
+
+            char accStats[128];
+            float accuracy = (save.totalShotsFired > 0) ? (float)save.totalMonstersKilled * 100.0f / save.totalShotsFired : 0.0f;
+            snprintf(accStats, sizeof(accStats), "Accuracy: %.1f%%   |   Shots: %d   |   Ammo Spent: %d",
+                     accuracy, save.totalShotsFired, save.totalAmmoSpent);
+            SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, accStats, 0, {200,200,200,255});
+            if (accSurf) {
+                SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf);
+                SDL_FRect accRect = {(float)(windowWidth/2 - accSurf->w/2), (float)yStats, (float)accSurf->w, (float)accSurf->h};
+                SDL_RenderTexture(renderer, accTex, NULL, &accRect);
+                SDL_DestroyTexture(accTex);
+                SDL_DestroySurface(accSurf);
+            }
+        } else {
+            SDL_Surface* noSaveSurf = TTF_RenderText_Solid(smallFont, "No save file found. Play the game to unlock achievements!", 0, {255,255,255,255});
+            if (noSaveSurf) {
+                SDL_Texture* noSaveTex = SDL_CreateTextureFromSurface(renderer, noSaveSurf);
+                SDL_FRect noSaveRect = {(float)(windowWidth/2 - noSaveSurf->w/2), (float)(windowHeight/2 + 100), (float)noSaveSurf->w, (float)noSaveSurf->h};
+                SDL_RenderTexture(renderer, noSaveTex, NULL, &noSaveRect);
+                SDL_DestroyTexture(noSaveTex);
+                SDL_DestroySurface(noSaveSurf);
+            }
+        }
+
+        SDL_Surface* backSurf = TTF_RenderText_Solid(font, "Press ESC or ENTER to return", 0, SDL_Color{150,150,150,255});
+        if (backSurf) {
+            SDL_Texture* backTex = SDL_CreateTextureFromSurface(renderer, backSurf);
+            SDL_FRect backRect = {(float)(windowWidth/2 - backSurf->w/2), (float)(windowHeight - 60), (float)backSurf->w, (float)backSurf->h};
+            SDL_RenderTexture(renderer, backTex, NULL, &backRect);
+            SDL_DestroyTexture(backTex);
+            SDL_DestroySurface(backSurf);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+}
+
 bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) {
     bool waiting = true;
     bool restart = false;
@@ -463,7 +729,7 @@ bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth,
 }
 
 bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight,
-                       int monsters, int ammo, int dmg, int shots, int bosses, int medkits, int ammoPickups) {
+                       const SaveData& stats) {
     bool waiting = true;
     bool restart = false;
     SDL_Event event;
@@ -478,93 +744,62 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
 
-        SDL_SetRenderDrawColor(renderer, 255,215,0,255);
-        SDL_FRect borderRect = {(float)(windowWidth/2 - 320), (float)(windowHeight/2 - 230), 640, 460};
-        SDL_RenderRect(renderer, &borderRect);
-
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "VICTORY!", 0, SDL_Color{255,215,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 210), (float)titleSurf->w, (float)titleSurf->h};
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), 40, (float)titleSurf->w, (float)titleSurf->h};
             SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
 
-        char statText[128];
-        int yOff = -180;
-        int leftX = windowWidth/2 - 300;
-        int rightX = windowWidth/2 + 50;
+        SDL_SetRenderDrawColor(renderer, 255,215,0,255);
+        SDL_FRect mainRect = {(float)(windowWidth/2 - 360), (float)(windowHeight/2 - 200), 720, 400};
+        SDL_RenderRect(renderer, &mainRect);
 
-        SDL_Surface* cat1 = TTF_RenderText_Solid(smallFont, "COMBAT STATS", 0, SDL_Color{255,215,0,255});
-        if (cat1) {
-            SDL_Texture* cat1Tex = SDL_CreateTextureFromSurface(renderer, cat1);
-            SDL_FRect cat1Rect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)cat1->w, (float)cat1->h};
-            SDL_RenderTexture(renderer, cat1Tex, NULL, &cat1Rect);
-            SDL_DestroyTexture(cat1Tex);
-            SDL_DestroySurface(cat1);
-            yOff += 30;
+        int xLeft = windowWidth/2 - 340;
+        int yPos = windowHeight/2 - 160;
+        int lineHeight = 28;
+
+        auto drawStatLine = [&](const std::string& label, int value, int xOff = 0) {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%s: %d", label.c_str(), value);
+            SDL_Surface* surf = TTF_RenderText_Solid(smallFont, buf, 0, {255,255,255,255});
+            if (surf) {
+                SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surf);
+                SDL_FRect rect = {(float)(xLeft + xOff), (float)yPos, (float)surf->w, (float)surf->h};
+                SDL_RenderTexture(renderer, tex, NULL, &rect);
+                SDL_DestroyTexture(tex);
+                SDL_DestroySurface(surf);
+            }
+            yPos += lineHeight;
+        };
+
+        drawStatLine("Monsters Killed", stats.totalMonstersKilled);
+        drawStatLine("Bosses Killed", stats.totalBossesKilled);
+        drawStatLine("Damage Taken", stats.totalDamageTaken);
+        drawStatLine("Shots Fired", stats.totalShotsFired);
+        drawStatLine("Ammo Spent", stats.totalAmmoSpent);
+        float accuracy = (stats.totalShotsFired > 0) ? (float)stats.totalMonstersKilled * 100.0f / stats.totalShotsFired : 0.0f;
+        char accBuf[128];
+        snprintf(accBuf, sizeof(accBuf), "Accuracy: %.1f%%", accuracy);
+        SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, accBuf, 0, {255,255,255,255});
+        if (accSurf) {
+            SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf);
+            SDL_FRect accRect = {(float)xLeft, (float)yPos, (float)accSurf->w, (float)accSurf->h};
+            SDL_RenderTexture(renderer, accTex, NULL, &accRect);
+            SDL_DestroyTexture(accTex);
+            SDL_DestroySurface(accSurf);
+            yPos += lineHeight;
         }
-
-        snprintf(statText, sizeof(statText), "Monsters Killed: %d", monsters);
-        SDL_Surface* mSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (mSurf) { SDL_Texture* mTex = SDL_CreateTextureFromSurface(renderer, mSurf); SDL_FRect mRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)mSurf->w, (float)mSurf->h}; SDL_RenderTexture(renderer, mTex, NULL, &mRect); SDL_DestroyTexture(mTex); SDL_DestroySurface(mSurf); yOff += 25; }
-
-        snprintf(statText, sizeof(statText), "Bosses Killed: %d", bosses);
-        SDL_Surface* bSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (bSurf) { SDL_Texture* bTex = SDL_CreateTextureFromSurface(renderer, bSurf); SDL_FRect bRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)bSurf->w, (float)bSurf->h}; SDL_RenderTexture(renderer, bTex, NULL, &bRect); SDL_DestroyTexture(bTex); SDL_DestroySurface(bSurf); yOff += 25; }
-
-        snprintf(statText, sizeof(statText), "Damage Taken: %d", dmg);
-        SDL_Surface* dSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (dSurf) { SDL_Texture* dTex = SDL_CreateTextureFromSurface(renderer, dSurf); SDL_FRect dRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)dSurf->w, (float)dSurf->h}; SDL_RenderTexture(renderer, dTex, NULL, &dRect); SDL_DestroyTexture(dTex); SDL_DestroySurface(dSurf); yOff += 25; }
-
-        yOff = -180;
-        SDL_Surface* cat2 = TTF_RenderText_Solid(smallFont, "WEAPON STATS", 0, SDL_Color{255,215,0,255});
-        if (cat2) {
-            SDL_Texture* cat2Tex = SDL_CreateTextureFromSurface(renderer, cat2);
-            SDL_FRect cat2Rect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)cat2->w, (float)cat2->h};
-            SDL_RenderTexture(renderer, cat2Tex, NULL, &cat2Rect);
-            SDL_DestroyTexture(cat2Tex);
-            SDL_DestroySurface(cat2);
-            yOff += 30;
-        }
-
-        snprintf(statText, sizeof(statText), "Shots Fired: %d", shots);
-        SDL_Surface* shSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (shSurf) { SDL_Texture* shTex = SDL_CreateTextureFromSurface(renderer, shSurf); SDL_FRect shRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)shSurf->w, (float)shSurf->h}; SDL_RenderTexture(renderer, shTex, NULL, &shRect); SDL_DestroyTexture(shTex); SDL_DestroySurface(shSurf); yOff += 25; }
-
-        snprintf(statText, sizeof(statText), "Ammo Spent: %d", ammo);
-        SDL_Surface* aSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (aSurf) { SDL_Texture* aTex = SDL_CreateTextureFromSurface(renderer, aSurf); SDL_FRect aRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)aSurf->w, (float)aSurf->h}; SDL_RenderTexture(renderer, aTex, NULL, &aRect); SDL_DestroyTexture(aTex); SDL_DestroySurface(aSurf); yOff += 25; }
-
-        float accuracy = (shots > 0) ? (float)monsters * 100.0f / shots : 0;
-        snprintf(statText, sizeof(statText), "Accuracy: %.1f%%", accuracy);
-        SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (accSurf) { SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf); SDL_FRect accRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)accSurf->w, (float)accSurf->h}; SDL_RenderTexture(renderer, accTex, NULL, &accRect); SDL_DestroyTexture(accTex); SDL_DestroySurface(accSurf); yOff += 25; }
-
-        yOff = -50;
-        SDL_Surface* cat3 = TTF_RenderText_Solid(smallFont, "PICKUPS", 0, SDL_Color{255,215,0,255});
-        if (cat3) {
-            SDL_Texture* cat3Tex = SDL_CreateTextureFromSurface(renderer, cat3);
-            SDL_FRect cat3Rect = {(float)(windowWidth/2 - cat3->w/2), (float)(windowHeight/2 + yOff), (float)cat3->w, (float)cat3->h};
-            SDL_RenderTexture(renderer, cat3Tex, NULL, &cat3Rect);
-            SDL_DestroyTexture(cat3Tex);
-            SDL_DestroySurface(cat3);
-            yOff += 30;
-        }
-
-        snprintf(statText, sizeof(statText), "Medkits Picked: %d", medkits);
-        SDL_Surface* mkSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (mkSurf) { SDL_Texture* mkTex = SDL_CreateTextureFromSurface(renderer, mkSurf); SDL_FRect mkRect = {(float)(windowWidth/2 - mkSurf->w/2 - 100), (float)(windowHeight/2 + yOff), (float)mkSurf->w, (float)mkSurf->h}; SDL_RenderTexture(renderer, mkTex, NULL, &mkRect); SDL_DestroyTexture(mkTex); SDL_DestroySurface(mkSurf); }
-
-        snprintf(statText, sizeof(statText), "Ammo Pickups: %d", ammoPickups);
-        SDL_Surface* apSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (apSurf) { SDL_Texture* apTex = SDL_CreateTextureFromSurface(renderer, apSurf); SDL_FRect apRect = {(float)(windowWidth/2 - apSurf->w/2 + 100), (float)(windowHeight/2 + yOff), (float)apSurf->w, (float)apSurf->h}; SDL_RenderTexture(renderer, apTex, NULL, &apRect); SDL_DestroyTexture(apTex); SDL_DestroySurface(apSurf); }
+        drawStatLine("Medkits Picked", stats.totalMedkitsPicked);
+        drawStatLine("Ammo Pickups", stats.totalAmmoPicked);
+        drawStatLine("Levels Completed", stats.totalLevelsCompleted);
 
         SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{150,150,150,255});
         if (restartSurf) {
             SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
-            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 180), (float)restartSurf->w, (float)restartSurf->h};
+            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 170), (float)restartSurf->w, (float)restartSurf->h};
             SDL_RenderTexture(renderer, restartTex, NULL, &textRect);
             SDL_DestroyTexture(restartTex);
             SDL_DestroySurface(restartSurf);
@@ -634,6 +869,17 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         std::string label;
         bool hover;
     };
+
+    auto updatePositions = [&](Button& upBtn, Button& downBtn, Button& scaleLeftBtn, Button& scaleRightBtn, Button& soundBtn, Button& okBtn, Button& cancelBtn) {
+        upBtn.rect = {(float)(windowWidth/2 + 80), 200, 40, 40};
+        downBtn.rect = {(float)(windowWidth/2 + 130), 200, 40, 40};
+        scaleLeftBtn.rect = {(float)(windowWidth/2 + 80), 280, 40, 40};
+        scaleRightBtn.rect = {(float)(windowWidth/2 + 130), 280, 40, 40};
+        soundBtn.rect = {(float)(windowWidth/2 + 80), 360, 100, 40};
+        okBtn.rect = {(float)(windowWidth/2 - 100), 450, 80, 40};
+        cancelBtn.rect = {(float)(windowWidth/2 + 20), 450, 80, 40};
+    };
+
     Button upBtn = {{(float)(windowWidth/2 + 80), 200, 40, 40}, "+", false};
     Button downBtn = {{(float)(windowWidth/2 + 130), 200, 40, 40}, "-", false};
     Button scaleLeftBtn = {{(float)(windowWidth/2 + 80), 280, 40, 40}, "<", false};
@@ -673,6 +919,7 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
                     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     windowWidth = g_settings.windowWidth;
                     windowHeight = g_settings.windowHeight;
+                    updatePositions(upBtn, downBtn, scaleLeftBtn, scaleRightBtn, soundBtn, okBtn, cancelBtn);
                     saveSettings();
                 }
                 if (mx >= downBtn.rect.x && mx <= downBtn.rect.x+downBtn.rect.w && my >= downBtn.rect.y && my <= downBtn.rect.y+downBtn.rect.h) {
@@ -683,6 +930,7 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
                     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     windowWidth = g_settings.windowWidth;
                     windowHeight = g_settings.windowHeight;
+                    updatePositions(upBtn, downBtn, scaleLeftBtn, scaleRightBtn, soundBtn, okBtn, cancelBtn);
                     saveSettings();
                 }
                 if (mx >= scaleLeftBtn.rect.x && mx <= scaleLeftBtn.rect.x+scaleLeftBtn.rect.w && my >= scaleLeftBtn.rect.y && my <= scaleLeftBtn.rect.y+scaleLeftBtn.rect.h) {
@@ -718,6 +966,9 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
                     soundBtn.label = soundEnabled ? "ON" : "OFF";
                     SDL_SetWindowSize(window, g_settings.windowWidth, g_settings.windowHeight);
                     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    windowWidth = g_settings.windowWidth;
+                    windowHeight = g_settings.windowHeight;
+                    updatePositions(upBtn, downBtn, scaleLeftBtn, scaleRightBtn, soundBtn, okBtn, cancelBtn);
                     menuRunning = false;
                 }
             }
@@ -797,10 +1048,11 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
         std::string label;
         bool hover;
     };
-    MenuButton newGameBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2-80), 200, 50}, "New Game", false};
-    MenuButton continueBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2-20), 200, 50}, "Continue", false};
-    MenuButton settingsBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+40), 200, 50}, "Settings", false};
-    MenuButton exitBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+100), 200, 50}, "Exit", false};
+    MenuButton newGameBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2-110), 200, 50}, "New Game", false};
+    MenuButton continueBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2-50), 200, 50}, "Continue", false};
+    MenuButton achievementsBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+10), 200, 50}, "Achievements", false};
+    MenuButton settingsBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+70), 200, 50}, "Settings", false};
+    MenuButton exitBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+130), 200, 50}, "Exit", false};
 
     bool menuRunning = true;
     int selected = -1;
@@ -815,6 +1067,8 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
                 newGameBtn.hover = SDL_PointInRect(&point, &rect);
                 rect = {(int)continueBtn.rect.x, (int)continueBtn.rect.y, (int)continueBtn.rect.w, (int)continueBtn.rect.h};
                 continueBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)achievementsBtn.rect.x, (int)achievementsBtn.rect.y, (int)achievementsBtn.rect.w, (int)achievementsBtn.rect.h};
+                achievementsBtn.hover = SDL_PointInRect(&point, &rect);
                 rect = {(int)settingsBtn.rect.x, (int)settingsBtn.rect.y, (int)settingsBtn.rect.w, (int)settingsBtn.rect.h};
                 settingsBtn.hover = SDL_PointInRect(&point, &rect);
                 rect = {(int)exitBtn.rect.x, (int)exitBtn.rect.y, (int)exitBtn.rect.w, (int)exitBtn.rect.h};
@@ -831,6 +1085,9 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
                         std::cout << "No save file found!" << std::endl;
                     }
                 }
+                if (mx >= achievementsBtn.rect.x && mx <= achievementsBtn.rect.x+achievementsBtn.rect.w && my >= achievementsBtn.rect.y && my <= achievementsBtn.rect.y+achievementsBtn.rect.h) {
+                    showAchievementsScreen(renderer, font, font, windowWidth, windowHeight);
+                }
                 if (mx >= settingsBtn.rect.x && mx <= settingsBtn.rect.x+settingsBtn.rect.w && my >= settingsBtn.rect.y && my <= settingsBtn.rect.y+settingsBtn.rect.h) { selected = 3; menuRunning = false; }
                 if (mx >= exitBtn.rect.x && mx <= exitBtn.rect.x+exitBtn.rect.w && my >= exitBtn.rect.y && my <= exitBtn.rect.y+exitBtn.rect.h) { selected = 1; menuRunning = false; }
             }
@@ -840,13 +1097,13 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "UNDOOM", 0, SDL_Color{255,0,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 180), (float)titleSurf->w, (float)titleSurf->h};
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 220), (float)titleSurf->w, (float)titleSurf->h};
             SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
         SDL_Color btnColor = {100,100,100,255}, btnHover = {150,150,150,255}, textColor = {255,255,255,255};
-        for (auto* btn : {&newGameBtn, &continueBtn, &settingsBtn, &exitBtn}) {
+        for (auto* btn : {&newGameBtn, &continueBtn, &achievementsBtn, &settingsBtn, &exitBtn}) {
             SDL_SetRenderDrawColor(renderer, btn->hover?btnHover.r:btnColor.r, btn->hover?btnHover.g:btnColor.g, btn->hover?btnHover.b:btnColor.b,255);
             SDL_RenderFillRect(renderer, &btn->rect);
             SDL_SetRenderDrawColor(renderer,255,255,255,255);
@@ -877,84 +1134,95 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
                    SDL_Window* window) {
     bool inPause = true;
     SDL_Event event;
+
+    struct PauseButton {
+        SDL_FRect rect;
+        std::string label;
+        bool hover;
+        int action;
+    };
+    std::vector<PauseButton> buttons;
+    auto updateButtons = [&]() {
+        buttons.clear();
+        int yStart = 180;
+        int btnW = 250;
+        int btnH = 45;
+        int centerX = windowWidth/2 - btnW/2;
+        buttons.push_back({{(float)centerX, (float)yStart, (float)btnW, (float)btnH}, "Resume", false, 0});
+        buttons.push_back({{(float)centerX, (float)(yStart+60), (float)btnW, (float)btnH}, "Save Game", false, 1});
+        buttons.push_back({{(float)centerX, (float)(yStart+120), (float)btnW, (float)btnH}, "Load Game", false, 2});
+        buttons.push_back({{(float)centerX, (float)(yStart+180), (float)btnW, (float)btnH}, "Settings", false, 3});
+        buttons.push_back({{(float)centerX, (float)(yStart+240), (float)btnW, (float)btnH}, "Quit to Menu", false, 4});
+    };
+    updateButtons();
+
     while (inPause) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { gameRunning = false; inPause = false; quitToMenu = true; }
-            if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.scancode == SDL_SCANCODE_ESCAPE) { inPause = false; }
-                if (event.key.scancode == SDL_SCANCODE_S) {
-                    saveRequested = true;
-                    inPause = false;
-                }
-                if (event.key.scancode == SDL_SCANCODE_L) {
-                    loadRequested = true;
-                    inPause = false;
-                }
-                if (event.key.scancode == SDL_SCANCODE_O) {
-                    showSettingsMenu(renderer, font, windowWidth, windowHeight, window);
-                }
-                if (event.key.scancode == SDL_SCANCODE_Q) {
-                    quitToMenu = true;
-                    gameRunning = false;
-                    inPause = false;
+            if (event.type == SDL_EVENT_MOUSE_MOTION) {
+                SDL_Point point = {static_cast<int>(event.motion.x), static_cast<int>(event.motion.y)};
+                for (auto& btn : buttons) {
+                    SDL_Rect rect = {(int)btn.rect.x, (int)btn.rect.y, (int)btn.rect.w, (int)btn.rect.h};
+                    btn.hover = SDL_PointInRect(&point, &rect);
                 }
             }
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
+                float mx = event.button.x, my = event.button.y;
+                for (const auto& btn : buttons) {
+                    if (mx >= btn.rect.x && mx <= btn.rect.x+btn.rect.w && my >= btn.rect.y && my <= btn.rect.y+btn.rect.h) {
+                        if (btn.action == 0) {
+                            inPause = false;
+                        } else if (btn.action == 1) {
+                            saveRequested = true;
+                            inPause = false;
+                        } else if (btn.action == 2) {
+                            loadRequested = true;
+                            inPause = false;
+                        } else if (btn.action == 3) {
+                            showSettingsMenu(renderer, font, windowWidth, windowHeight, window);
+                            updateButtons();
+                        } else if (btn.action == 4) {
+                            quitToMenu = true;
+                            gameRunning = false;
+                            inPause = false;
+                        }
+                        break;
+                    }
+                }
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {
+                inPause = false;
+            }
         }
+
         SDL_SetRenderDrawColor(renderer, 0,0,0,200);
         SDL_RenderClear(renderer);
 
         SDL_Surface* pauseSurf = TTF_RenderText_Solid(font, "PAUSED", 0, SDL_Color{255,255,255,255});
         if (pauseSurf) {
             SDL_Texture* pauseTex = SDL_CreateTextureFromSurface(renderer, pauseSurf);
-            SDL_FRect pauseRect = {(float)(windowWidth/2 - pauseSurf->w/2), 100, (float)pauseSurf->w, (float)pauseSurf->h};
+            SDL_FRect pauseRect = {(float)(windowWidth/2 - pauseSurf->w/2), 80, (float)pauseSurf->w, (float)pauseSurf->h};
             SDL_RenderTexture(renderer, pauseTex, NULL, &pauseRect);
             SDL_DestroyTexture(pauseTex);
             SDL_DestroySurface(pauseSurf);
         }
 
-        SDL_Surface* resumeSurf = TTF_RenderText_Solid(font, "Press ESC to Resume", 0, SDL_Color{200,200,200,255});
-        if (resumeSurf) {
-            SDL_Texture* resumeTex = SDL_CreateTextureFromSurface(renderer, resumeSurf);
-            SDL_FRect resumeRect = {(float)(windowWidth/2 - resumeSurf->w/2), 200, (float)resumeSurf->w, (float)resumeSurf->h};
-            SDL_RenderTexture(renderer, resumeTex, NULL, &resumeRect);
-            SDL_DestroyTexture(resumeTex);
-            SDL_DestroySurface(resumeSurf);
-        }
-
-        SDL_Surface* saveSurf = TTF_RenderText_Solid(font, "Press S to Save Game", 0, SDL_Color{200,200,200,255});
-        if (saveSurf) {
-            SDL_Texture* saveTex = SDL_CreateTextureFromSurface(renderer, saveSurf);
-            SDL_FRect saveRect = {(float)(windowWidth/2 - saveSurf->w/2), 260, (float)saveSurf->w, (float)saveSurf->h};
-            SDL_RenderTexture(renderer, saveTex, NULL, &saveRect);
-            SDL_DestroyTexture(saveTex);
-            SDL_DestroySurface(saveSurf);
-        }
-
-        SDL_Surface* loadSurf = TTF_RenderText_Solid(font, "Press L to Load Game", 0, SDL_Color{200,200,200,255});
-        if (loadSurf) {
-            SDL_Texture* loadTex = SDL_CreateTextureFromSurface(renderer, loadSurf);
-            SDL_FRect loadRect = {(float)(windowWidth/2 - loadSurf->w/2), 320, (float)loadSurf->w, (float)loadSurf->h};
-            SDL_RenderTexture(renderer, loadTex, NULL, &loadRect);
-            SDL_DestroyTexture(loadTex);
-            SDL_DestroySurface(loadSurf);
-        }
-
-        SDL_Surface* settingsSurf = TTF_RenderText_Solid(font, "Press O for Settings", 0, SDL_Color{200,200,200,255});
-        if (settingsSurf) {
-            SDL_Texture* settingsTex = SDL_CreateTextureFromSurface(renderer, settingsSurf);
-            SDL_FRect settingsRect = {(float)(windowWidth/2 - settingsSurf->w/2), 380, (float)settingsSurf->w, (float)settingsSurf->h};
-            SDL_RenderTexture(renderer, settingsTex, NULL, &settingsRect);
-            SDL_DestroyTexture(settingsTex);
-            SDL_DestroySurface(settingsSurf);
-        }
-
-        SDL_Surface* quitSurf = TTF_RenderText_Solid(font, "Press Q to Quit to Menu", 0, SDL_Color{200,200,200,255});
-        if (quitSurf) {
-            SDL_Texture* quitTex = SDL_CreateTextureFromSurface(renderer, quitSurf);
-            SDL_FRect quitRect = {(float)(windowWidth/2 - quitSurf->w/2), 440, (float)quitSurf->w, (float)quitSurf->h};
-            SDL_RenderTexture(renderer, quitTex, NULL, &quitRect);
-            SDL_DestroyTexture(quitTex);
-            SDL_DestroySurface(quitSurf);
+        for (const auto& btn : buttons) {
+            SDL_Color btnColor = btn.hover ? SDL_Color{150,150,150,255} : SDL_Color{100,100,100,255};
+            SDL_SetRenderDrawColor(renderer, btnColor.r, btnColor.g, btnColor.b, 255);
+            SDL_RenderFillRect(renderer, &btn.rect);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderRect(renderer, &btn.rect);
+            SDL_Surface* btnSurf = TTF_RenderText_Solid(font, btn.label.c_str(), 0, {255,255,255,255});
+            if (btnSurf) {
+                SDL_Texture* btnTex = SDL_CreateTextureFromSurface(renderer, btnSurf);
+                float textX = btn.rect.x + (btn.rect.w - btnSurf->w)/2;
+                float textY = btn.rect.y + (btn.rect.h - btnSurf->h)/2;
+                SDL_FRect textRect = {textX, textY, (float)btnSurf->w, (float)btnSurf->h};
+                SDL_RenderTexture(renderer, btnTex, NULL, &textRect);
+                SDL_DestroyTexture(btnTex);
+                SDL_DestroySurface(btnSurf);
+            }
         }
 
         SDL_RenderPresent(renderer);
@@ -1008,6 +1276,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     int totalBossesKilled = 0;
     int totalMedkitsPicked = 0;
     int totalAmmoPicked = 0;
+    int totalMonstersEncountered = 0;
+    int totalLevelsCompleted = 0;
+    bool achLevel1 = false, achLevel2 = false, achLevel3 = false, achBossKilled = false, achKill50 = false;
 
     bool hasLoaded = false;
     if (isContinue && loadGame(saveData)) {
@@ -1019,6 +1290,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         totalBossesKilled = saveData.totalBossesKilled;
         totalMedkitsPicked = saveData.totalMedkitsPicked;
         totalAmmoPicked = saveData.totalAmmoPicked;
+        totalMonstersEncountered = saveData.totalMonstersEncountered;
+        totalLevelsCompleted = saveData.totalLevelsCompleted;
+        achLevel1 = saveData.achLevel1;
+        achLevel2 = saveData.achLevel2;
+        achLevel3 = saveData.achLevel3;
+        achBossKilled = saveData.achBossKilled;
+        achKill50 = saveData.achKill50;
         hasLoaded = true;
     }
 
@@ -1068,8 +1346,10 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     player.y = (float)t.y;
                 } else if (t.type == 2 || t.type == 3) {
                     mobs.emplace_back((float)t.x, (float)t.y, ZOMBIE);
+                    totalMonstersEncountered++;
                 } else if (t.type == 4) {
                     mobs.emplace_back((float)t.x, (float)t.y, BOSS);
+                    totalMonstersEncountered++;
                 } else if (t.type == 2011) {
                     pickups.push_back({(float)t.x, (float)t.y, 2011, true});
                 } else if (t.type == 2007) {
@@ -1196,6 +1476,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 save.totalBossesKilled = totalBossesKilled;
                 save.totalMedkitsPicked = totalMedkitsPicked;
                 save.totalAmmoPicked = totalAmmoPicked;
+                save.totalMonstersEncountered = totalMonstersEncountered;
+                save.totalLevelsCompleted = totalLevelsCompleted;
+                save.achLevel1 = achLevel1;
+                save.achLevel2 = achLevel2;
+                save.achLevel3 = achLevel3;
+                save.achBossKilled = achBossKilled;
+                save.achKill50 = achKill50;
                 for (const auto& mob : mobs) {
                     save.mobs.emplace_back(mob.x, mob.y, (mob.type == BOSS) ? 4 : 2, mob.hp);
                 }
@@ -1226,6 +1513,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {
                     showPauseMenu(renderer, font, g_settings.windowWidth, g_settings.windowHeight,
                                   gameRunning, saveData, saveRequested, loadRequested, quitToMenu, window);
+                    RENDER_WIDTH = g_settings.windowWidth / g_settings.renderScale;
                     if (quitToMenu) {
                         return false;
                     }
@@ -1248,6 +1536,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         save.totalBossesKilled = totalBossesKilled;
                         save.totalMedkitsPicked = totalMedkitsPicked;
                         save.totalAmmoPicked = totalAmmoPicked;
+                        save.totalMonstersEncountered = totalMonstersEncountered;
+                        save.totalLevelsCompleted = totalLevelsCompleted;
+                        save.achLevel1 = achLevel1;
+                        save.achLevel2 = achLevel2;
+                        save.achLevel3 = achLevel3;
+                        save.achBossKilled = achBossKilled;
+                        save.achKill50 = achKill50;
                         for (const auto& mob : mobs) {
                             save.mobs.emplace_back(mob.x, mob.y, (mob.type == BOSS) ? 4 : 2, mob.hp);
                         }
@@ -1279,6 +1574,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                             totalBossesKilled = load.totalBossesKilled;
                             totalMedkitsPicked = load.totalMedkitsPicked;
                             totalAmmoPicked = load.totalAmmoPicked;
+                            totalMonstersEncountered = load.totalMonstersEncountered;
+                            totalLevelsCompleted = load.totalLevelsCompleted;
+                            achLevel1 = load.achLevel1;
+                            achLevel2 = load.achLevel2;
+                            achLevel3 = load.achLevel3;
+                            achBossKilled = load.achBossKilled;
+                            achKill50 = load.achKill50;
                             mobs.clear();
                             for (const auto& m : load.mobs) {
                                 float x,y; int type,hp;
@@ -1371,6 +1673,17 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             if (shootFlashFrames > 0) shootFlashFrames--;
 
             if (playerHealth <= 0) {
+                SaveData deathStats;
+                deathStats.totalMonstersKilled = totalMonstersKilled;
+                deathStats.totalAmmoSpent = totalAmmoSpent;
+                deathStats.totalDamageTaken = totalDamageTaken;
+                deathStats.totalShotsFired = totalShotsFired;
+                deathStats.totalBossesKilled = totalBossesKilled;
+                deathStats.totalMedkitsPicked = totalMedkitsPicked;
+                deathStats.totalAmmoPicked = totalAmmoPicked;
+                deathStats.totalMonstersEncountered = totalMonstersEncountered;
+                deathStats.totalLevelsCompleted = totalLevelsCompleted;
+                showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
                 levelComplete = true;
                 gameRunning = false;
             }
@@ -1423,6 +1736,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                             bossDying = true;
                             bossDeathTimer = 1.0f;
                             totalBossesKilled++;
+                            achBossKilled = true;
                             achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
                         }
                     }
@@ -1434,8 +1748,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         if (mob.summonCooldown > 0.0f) {
                             mob.summonCooldown -= dt;
                         }
-                        if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 6) {
-                            int toSpawn = std::min(2, 6 - bossPtr->summonCount);
+                        if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 12) {
+                            int toSpawn = std::min(3 + (rand() % 2), 12 - bossPtr->summonCount);
                             if (toSpawn > 0) {
                                 mobRenderStates[bossPtr].attackAnimTime = 0.5f;
                                 std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
@@ -1444,9 +1758,10 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                                     MobRenderState newState;
                                     newState.bossPtr = bossPtr;
                                     mobRenderStates[&mobs.back()] = newState;
-                                    bossPtr->addSummon(1);
+                                    bossPtr->addSummon(toSpawn);
+                                    totalMonstersEncountered += toSpawn;
                                 }
-                                mob.summonCooldown = 3.0f;
+                                mob.summonCooldown = 4.0f;
                                 std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
                                           << bossPtr->summonCount << std::endl;
                             }
@@ -1508,7 +1823,20 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     }
                 }
                 mob.tryAttack(player, dt, playerHealth);
-                if (playerHealth <= 0) return false;
+                if (playerHealth <= 0) {
+                    SaveData deathStats;
+                    deathStats.totalMonstersKilled = totalMonstersKilled;
+                    deathStats.totalAmmoSpent = totalAmmoSpent;
+                    deathStats.totalDamageTaken = totalDamageTaken;
+                    deathStats.totalShotsFired = totalShotsFired;
+                    deathStats.totalBossesKilled = totalBossesKilled;
+                    deathStats.totalMedkitsPicked = totalMedkitsPicked;
+                    deathStats.totalAmmoPicked = totalAmmoPicked;
+                    deathStats.totalMonstersEncountered = totalMonstersEncountered;
+                    deathStats.totalLevelsCompleted = totalLevelsCompleted;
+                    showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
+                    return false;
+                }
             }
 
             int hpLostThisFrame = hpBeforeDamage - playerHealth;
@@ -1521,6 +1849,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     stateIt->second.deathTimer -= dt;
                     if (stateIt->second.deathTimer <= 0.0f) {
                         totalMonstersKilled++;
+                        if (totalMonstersKilled >= 50) achKill50 = true;
                         if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
                             stateIt->second.bossPtr->removeSummon();
                         }
@@ -1542,6 +1871,10 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     levelCompletedTriggered = true;
                     levelCompleteDelay = 2.0f;
                     achievements.push_back({"LEVEL " + std::to_string(currentLevel) + " COMPLETED", 2.0f, 2.0f});
+                    if (currentLevel == 1) achLevel1 = true;
+                    if (currentLevel == 2) achLevel2 = true;
+                    if (currentLevel == 3) achLevel3 = true;
+                    totalLevelsCompleted = currentLevel;
                 }
             }
 
@@ -1555,9 +1888,17 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             if (bossDying && bossDeathTimer > 0) {
                 bossDeathTimer -= dt;
                 if (bossDeathTimer <= 0.0f) {
-                    showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight,
-                                      totalMonstersKilled, totalAmmoSpent, totalDamageTaken, totalShotsFired,
-                                      totalBossesKilled, totalMedkitsPicked, totalAmmoPicked);
+                    SaveData victoryStats;
+                    victoryStats.totalMonstersKilled = totalMonstersKilled;
+                    victoryStats.totalAmmoSpent = totalAmmoSpent;
+                    victoryStats.totalDamageTaken = totalDamageTaken;
+                    victoryStats.totalShotsFired = totalShotsFired;
+                    victoryStats.totalBossesKilled = totalBossesKilled;
+                    victoryStats.totalMedkitsPicked = totalMedkitsPicked;
+                    victoryStats.totalAmmoPicked = totalAmmoPicked;
+                    victoryStats.totalMonstersEncountered = totalMonstersEncountered;
+                    victoryStats.totalLevelsCompleted = totalLevelsCompleted;
+                    showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, victoryStats);
                     return true;
                 }
             }
@@ -1567,9 +1908,17 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (!next) return true;
                 break;
             } else if (levelComplete && currentLevel == 3 && !bossDying && !quitGame) {
-                showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight,
-                                  totalMonstersKilled, totalAmmoSpent, totalDamageTaken, totalShotsFired,
-                                  totalBossesKilled, totalMedkitsPicked, totalAmmoPicked);
+                SaveData victoryStats;
+                victoryStats.totalMonstersKilled = totalMonstersKilled;
+                victoryStats.totalAmmoSpent = totalAmmoSpent;
+                victoryStats.totalDamageTaken = totalDamageTaken;
+                victoryStats.totalShotsFired = totalShotsFired;
+                victoryStats.totalBossesKilled = totalBossesKilled;
+                victoryStats.totalMedkitsPicked = totalMedkitsPicked;
+                victoryStats.totalAmmoPicked = totalAmmoPicked;
+                victoryStats.totalMonstersEncountered = totalMonstersEncountered;
+                victoryStats.totalLevelsCompleted = totalLevelsCompleted;
+                showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, victoryStats);
                 return true;
             }
 
@@ -1589,7 +1938,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 else ++it;
             }
 
-            // Рендер (сокращён для краткости, так как код большой и не менялся)
             SDL_SetRenderDrawColor(renderer, 0,0,0,255);
             SDL_RenderClear(renderer);
             SDL_SetRenderDrawColor(renderer, 26, 20, 16, 255);
