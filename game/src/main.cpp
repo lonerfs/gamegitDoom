@@ -192,6 +192,11 @@ bool loadGame(SaveData& save, const std::string& filename = "savegame.dat") {
     return true;
 }
 
+bool saveFileExists() {
+    std::ifstream file("savegame.dat");
+    return file.good();
+}
+
 Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
     Texture tex = {nullptr, 64, 64, {}};
     SDL_Surface* surf = IMG_Load(filename);
@@ -365,7 +370,7 @@ void performShot(float x, float y, float angle,
 struct ReloadState {
     bool inProgress = false;
     float timer = 0.0f;
-    int weaponType = 0; // 0 - пистолет, 1 - дробовик
+    int weaponType = 0;
 };
 
 void startReload(ReloadState& reload, int weaponType, float duration) {
@@ -380,7 +385,6 @@ void updateReload(ReloadState& reload, float dt, int& pistolAmmo, int& shotgunAm
     if (!reload.inProgress) return;
     reload.timer -= dt;
     if (reload.timer <= 0.0f) {
-        // Завершаем перезарядку
         if (reload.weaponType == 0) {
             int needed = 7 - pistolMag;
             int toReload = std::min(needed, pistolAmmo);
@@ -492,7 +496,6 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         int leftX = windowWidth/2 - 300;
         int rightX = windowWidth/2 + 50;
 
-        // Combat Stats
         SDL_Surface* cat1 = TTF_RenderText_Solid(smallFont, "COMBAT STATS", 0, SDL_Color{255,215,0,255});
         if (cat1) {
             SDL_Texture* cat1Tex = SDL_CreateTextureFromSurface(renderer, cat1);
@@ -539,7 +542,6 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
         if (accSurf) { SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf); SDL_FRect accRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)accSurf->w, (float)accSurf->h}; SDL_RenderTexture(renderer, accTex, NULL, &accRect); SDL_DestroyTexture(accTex); SDL_DestroySurface(accSurf); yOff += 25; }
 
-        // Pickups (внизу по центру)
         yOff = -50;
         SDL_Surface* cat3 = TTF_RenderText_Solid(smallFont, "PICKUPS", 0, SDL_Color{255,215,0,255});
         if (cat3) {
@@ -632,11 +634,11 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         std::string label;
         bool hover;
     };
-    Button upBtn = {{(float)(windowWidth/2 + 100), 200, 40, 40}, "+", false};
-    Button downBtn = {{(float)(windowWidth/2 + 150), 200, 40, 40}, "-", false};
-    Button scaleLeftBtn = {{(float)(windowWidth/2 + 100), 280, 40, 40}, "<", false};
-    Button scaleRightBtn = {{(float)(windowWidth/2 + 150), 280, 40, 40}, ">", false};
-    Button soundBtn = {{(float)(windowWidth/2 + 100), 360, 100, 40}, soundEnabled ? "ON" : "OFF", false};
+    Button upBtn = {{(float)(windowWidth/2 + 80), 200, 40, 40}, "+", false};
+    Button downBtn = {{(float)(windowWidth/2 + 130), 200, 40, 40}, "-", false};
+    Button scaleLeftBtn = {{(float)(windowWidth/2 + 80), 280, 40, 40}, "<", false};
+    Button scaleRightBtn = {{(float)(windowWidth/2 + 130), 280, 40, 40}, ">", false};
+    Button soundBtn = {{(float)(windowWidth/2 + 80), 360, 100, 40}, soundEnabled ? "ON" : "OFF", false};
     Button okBtn = {{(float)(windowWidth/2 - 100), 450, 80, 40}, "OK", false};
     Button cancelBtn = {{(float)(windowWidth/2 + 20), 450, 80, 40}, "Cancel", false};
 
@@ -738,7 +740,7 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         SDL_Surface* resSurf = TTF_RenderText_Solid(font, resText, 0, SDL_Color{200,200,200,255});
         if (resSurf) {
             SDL_Texture* resTex = SDL_CreateTextureFromSurface(renderer, resSurf);
-            SDL_FRect resRect = {(float)(windowWidth/2 - 150), 200, (float)resSurf->w, (float)resSurf->h};
+            SDL_FRect resRect = {(float)(windowWidth/2 - 220), 200, (float)resSurf->w, (float)resSurf->h};
             SDL_RenderTexture(renderer, resTex, NULL, &resRect);
             SDL_DestroyTexture(resTex);
             SDL_DestroySurface(resSurf);
@@ -749,7 +751,7 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         SDL_Surface* scaleSurf = TTF_RenderText_Solid(font, scaleText, 0, SDL_Color{200,200,200,255});
         if (scaleSurf) {
             SDL_Texture* scaleTex = SDL_CreateTextureFromSurface(renderer, scaleSurf);
-            SDL_FRect scaleRect = {(float)(windowWidth/2 - 150), 280, (float)scaleSurf->w, (float)scaleSurf->h};
+            SDL_FRect scaleRect = {(float)(windowWidth/2 - 220), 280, (float)scaleSurf->w, (float)scaleSurf->h};
             SDL_RenderTexture(renderer, scaleTex, NULL, &scaleRect);
             SDL_DestroyTexture(scaleTex);
             SDL_DestroySurface(scaleSurf);
@@ -760,7 +762,7 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         SDL_Surface* soundSurf = TTF_RenderText_Solid(font, soundText, 0, SDL_Color{200,200,200,255});
         if (soundSurf) {
             SDL_Texture* soundTex = SDL_CreateTextureFromSurface(renderer, soundSurf);
-            SDL_FRect soundRect = {(float)(windowWidth/2 - 150), 360, (float)soundSurf->w, (float)soundSurf->h};
+            SDL_FRect soundRect = {(float)(windowWidth/2 - 220), 360, (float)soundSurf->w, (float)soundSurf->h};
             SDL_RenderTexture(renderer, soundTex, NULL, &soundRect);
             SDL_DestroyTexture(soundTex);
             SDL_DestroySurface(soundSurf);
@@ -821,7 +823,14 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
                 float mx = event.button.x, my = event.button.y;
                 if (mx >= newGameBtn.rect.x && mx <= newGameBtn.rect.x+newGameBtn.rect.w && my >= newGameBtn.rect.y && my <= newGameBtn.rect.y+newGameBtn.rect.h) { selected = 0; menuRunning = false; }
-                if (mx >= continueBtn.rect.x && mx <= continueBtn.rect.x+continueBtn.rect.w && my >= continueBtn.rect.y && my <= continueBtn.rect.y+continueBtn.rect.h) { selected = 2; menuRunning = false; }
+                if (mx >= continueBtn.rect.x && mx <= continueBtn.rect.x+continueBtn.rect.w && my >= continueBtn.rect.y && my <= continueBtn.rect.y+continueBtn.rect.h) {
+                    if (saveFileExists()) {
+                        selected = 2;
+                        menuRunning = false;
+                    } else {
+                        std::cout << "No save file found!" << std::endl;
+                    }
+                }
                 if (mx >= settingsBtn.rect.x && mx <= settingsBtn.rect.x+settingsBtn.rect.w && my >= settingsBtn.rect.y && my <= settingsBtn.rect.y+settingsBtn.rect.h) { selected = 3; menuRunning = false; }
                 if (mx >= exitBtn.rect.x && mx <= exitBtn.rect.x+exitBtn.rect.w && my >= exitBtn.rect.y && my <= exitBtn.rect.y+exitBtn.rect.h) { selected = 1; menuRunning = false; }
             }
@@ -1000,6 +1009,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     int totalMedkitsPicked = 0;
     int totalAmmoPicked = 0;
 
+    bool hasLoaded = false;
     if (isContinue && loadGame(saveData)) {
         currentLevel = saveData.level;
         totalMonstersKilled = saveData.totalMonstersKilled;
@@ -1009,6 +1019,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         totalBossesKilled = saveData.totalBossesKilled;
         totalMedkitsPicked = saveData.totalMedkitsPicked;
         totalAmmoPicked = saveData.totalAmmoPicked;
+        hasLoaded = true;
     }
 
     while (currentLevel <= 3) {
@@ -1034,7 +1045,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
 
         const auto& things = gameMap.getThings();
 
-        if (isContinue && currentLevel == saveData.level && saveData.mobs.size() > 0) {
+        if (isContinue && hasLoaded && currentLevel == saveData.level && saveData.mobs.size() > 0) {
             player.x = saveData.playerX;
             player.y = saveData.playerY;
             player.angle = saveData.playerAngle;
@@ -1078,7 +1089,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         int shotgunMag = SHOTGUN_MAG_SIZE;
         int currentWeapon = 0;
 
-        if (isContinue && currentLevel == saveData.level) {
+        if (isContinue && hasLoaded && currentLevel == saveData.level) {
             playerHealth = saveData.playerHealth;
             pistolAmmo = saveData.pistolAmmo;
             shotgunAmmo = saveData.shotgunAmmo;
@@ -1215,7 +1226,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {
                     showPauseMenu(renderer, font, g_settings.windowWidth, g_settings.windowHeight,
                                   gameRunning, saveData, saveRequested, loadRequested, quitToMenu, window);
-                    if (quitToMenu) { levelComplete = true; gameRunning = false; break; }
+                    if (quitToMenu) {
+                        return false;
+                    }
                     if (saveRequested) {
                         SaveData save;
                         save.level = currentLevel;
@@ -1312,7 +1325,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            if (quitGame) break;
+            if (quitGame) return false;
 
             updateReload(reloadState, dt, pistolAmmo, shotgunAmmo, pistolMag, shotgunMag);
 
@@ -1560,7 +1573,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 return true;
             }
 
-            // Обновление анимаций и пуль
             for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
                 it->lifetime--;
                 if (it->lifetime <= 0) it = bulletHoles.erase(it);
@@ -1577,7 +1589,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 else ++it;
             }
 
-            // Рендер
+            // Рендер (сокращён для краткости, так как код большой и не менялся)
             SDL_SetRenderDrawColor(renderer, 0,0,0,255);
             SDL_RenderClear(renderer);
             SDL_SetRenderDrawColor(renderer, 26, 20, 16, 255);
