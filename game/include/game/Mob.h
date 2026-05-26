@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <optional>
+#include <SDL3/SDL.h> // Для Uint32
 #include "game/DoomMap.h"
 #include "game/Player.h"
 
@@ -45,12 +46,14 @@ struct Mob {
     float wanderTimer;
     float wanderAngle;
     float wanderSpeed;
+    
+    Uint32 lastUpdateTime;
 
     Mob(float _x, float _y, MobType _type) : x(_x), y(_y), type(_type), state(IDLE),
         attackCooldown(0.0f), fireCooldown(0.0f), awakened(false),
         dodgeTimer(0.0f), dodgeAngle(0.0f), summonCooldown(0.0f), isSummoning(false),
         wanderTimer(0.0f), wanderAngle(0.0f), wanderSpeed(30.0f),
-        summonCount(0)        // инициализация счётчика миньонов
+        summonCount(0), lastUpdateTime(0)
     {
         switch(_type) {
             case ZOMBIE:
@@ -60,7 +63,7 @@ struct Mob {
                 attackRange = 80.0f;
                 shootRange = 800.0f;
                 projectileSpeed = 400.0f;
-                projectileDamage = 10;
+                projectileDamage = 15;
                 fireCooldown = 0.0f;
                 wanderSpeed = 180.0f;
                 break;
@@ -71,7 +74,7 @@ struct Mob {
                 attackRange = 120.0f;
                 shootRange = 900.0f;
                 projectileSpeed = 500.0f;
-                projectileDamage = 25;
+                projectileDamage = 35;
                 fireCooldown = 0.0f;
                 summonCooldown = 2.0f;
                 isSummoning = false;
@@ -203,7 +206,7 @@ struct Mob {
         float dist = std::sqrt(dx*dx + dy*dy);
 
         if (dist < attackRange && attackCooldown <= 0.0f) {
-            int damage = 7;
+            int damage = (type == BOSS) ? 20 : 15; // БАЛАНСИРОВКА УРОНА ВБЛИЗИ
             playerHealth -= damage;
             attackCooldown = 1.5f;
             if (playerHealth < 0) playerHealth = 0;
