@@ -84,6 +84,13 @@ struct SaveData {
     int currentWeapon;
     std::vector<std::tuple<float, float, int, int>> mobs;
     std::vector<std::tuple<float, float, int, bool>> pickups;
+    int totalMonstersKilled;
+    int totalAmmoSpent;
+    int totalDamageTaken;
+    int totalShotsFired;
+    int totalBossesKilled;
+    int totalMedkitsPicked;
+    int totalAmmoPicked;
 };
 
 void saveGame(const SaveData& save, const std::string& filename = "savegame.dat") {
@@ -102,6 +109,13 @@ void saveGame(const SaveData& save, const std::string& filename = "savegame.dat"
     file.write((char*)&save.pistolMag, sizeof(save.pistolMag));
     file.write((char*)&save.shotgunMag, sizeof(save.shotgunMag));
     file.write((char*)&save.currentWeapon, sizeof(save.currentWeapon));
+    file.write((char*)&save.totalMonstersKilled, sizeof(save.totalMonstersKilled));
+    file.write((char*)&save.totalAmmoSpent, sizeof(save.totalAmmoSpent));
+    file.write((char*)&save.totalDamageTaken, sizeof(save.totalDamageTaken));
+    file.write((char*)&save.totalShotsFired, sizeof(save.totalShotsFired));
+    file.write((char*)&save.totalBossesKilled, sizeof(save.totalBossesKilled));
+    file.write((char*)&save.totalMedkitsPicked, sizeof(save.totalMedkitsPicked));
+    file.write((char*)&save.totalAmmoPicked, sizeof(save.totalAmmoPicked));
 
     size_t mobCount = save.mobs.size();
     file.write((char*)&mobCount, sizeof(mobCount));
@@ -142,6 +156,13 @@ bool loadGame(SaveData& save, const std::string& filename = "savegame.dat") {
     file.read((char*)&save.pistolMag, sizeof(save.pistolMag));
     file.read((char*)&save.shotgunMag, sizeof(save.shotgunMag));
     file.read((char*)&save.currentWeapon, sizeof(save.currentWeapon));
+    file.read((char*)&save.totalMonstersKilled, sizeof(save.totalMonstersKilled));
+    file.read((char*)&save.totalAmmoSpent, sizeof(save.totalAmmoSpent));
+    file.read((char*)&save.totalDamageTaken, sizeof(save.totalDamageTaken));
+    file.read((char*)&save.totalShotsFired, sizeof(save.totalShotsFired));
+    file.read((char*)&save.totalBossesKilled, sizeof(save.totalBossesKilled));
+    file.read((char*)&save.totalMedkitsPicked, sizeof(save.totalMedkitsPicked));
+    file.read((char*)&save.totalAmmoPicked, sizeof(save.totalAmmoPicked));
 
     size_t mobCount;
     file.read((char*)&mobCount, sizeof(mobCount));
@@ -287,7 +308,8 @@ void performShot(float x, float y, float angle,
                  int& pistolAmmo, int& shotgunAmmo,
                  int& pistolMag, int& shotgunMag,
                  int currentWeapon,
-                 int& playerHealth, int playerMaxHealth) {
+                 int& playerHealth, int playerMaxHealth,
+                 int& totalShotsFired) {
     int pellets = (currentWeapon == 0) ? 1 : 5;
     float spread = (currentWeapon == 0) ? 0.0f : 0.12f;
     int ammoInMag = (currentWeapon == 0) ? pistolMag : shotgunMag;
@@ -295,6 +317,8 @@ void performShot(float x, float y, float angle,
 
     if (currentWeapon == 0) pistolMag--;
     else shotgunMag--;
+
+    totalShotsFired++;
 
     for (int i = 0; i < pellets; ++i) {
         float offset = 0.0f;
@@ -338,19 +362,39 @@ void performShot(float x, float y, float angle,
     }
 }
 
-void reloadWeapon(int currentWeapon, int& pistolAmmo, int& shotgunAmmo, int& pistolMag, int& shotgunMag) {
-    if (currentWeapon == 0) {
-        int needed = 7 - pistolMag;
-        int toReload = std::min(needed, pistolAmmo);
-        pistolMag += toReload;
-        pistolAmmo -= toReload;
-        std::cout << "Pistol reloaded: " << pistolMag << "/7" << std::endl;
-    } else {
-        int needed = 2 - shotgunMag;
-        int toReload = std::min(needed, shotgunAmmo);
-        shotgunMag += toReload;
-        shotgunAmmo -= toReload;
-        std::cout << "Shotgun reloaded: " << shotgunMag << "/2" << std::endl;
+struct ReloadState {
+    bool inProgress = false;
+    float timer = 0.0f;
+    int weaponType = 0; // 0 - пистолет, 1 - дробовик
+};
+
+void startReload(ReloadState& reload, int weaponType, float duration) {
+    if (reload.inProgress) return;
+    reload.inProgress = true;
+    reload.timer = duration;
+    reload.weaponType = weaponType;
+    std::cout << "Reloading..." << std::endl;
+}
+
+void updateReload(ReloadState& reload, float dt, int& pistolAmmo, int& shotgunAmmo, int& pistolMag, int& shotgunMag) {
+    if (!reload.inProgress) return;
+    reload.timer -= dt;
+    if (reload.timer <= 0.0f) {
+        // Завершаем перезарядку
+        if (reload.weaponType == 0) {
+            int needed = 7 - pistolMag;
+            int toReload = std::min(needed, pistolAmmo);
+            pistolMag += toReload;
+            pistolAmmo -= toReload;
+            std::cout << "Pistol reloaded: " << pistolMag << "/7" << std::endl;
+        } else {
+            int needed = 2 - shotgunMag;
+            int toReload = std::min(needed, shotgunAmmo);
+            shotgunMag += toReload;
+            shotgunAmmo -= toReload;
+            std::cout << "Shotgun reloaded: " << shotgunMag << "/2" << std::endl;
+        }
+        reload.inProgress = false;
     }
 }
 
@@ -414,7 +458,8 @@ bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth,
     return restart;
 }
 
-bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight, int monsters, int ammo, int dmg) {
+bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight,
+                       int monsters, int ammo, int dmg, int shots, int bosses, int medkits, int ammoPickups) {
     bool waiting = true;
     bool restart = false;
     SDL_Event event;
@@ -429,47 +474,95 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
 
+        SDL_SetRenderDrawColor(renderer, 255,215,0,255);
+        SDL_FRect borderRect = {(float)(windowWidth/2 - 320), (float)(windowHeight/2 - 230), 640, 460};
+        SDL_RenderRect(renderer, &borderRect);
+
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "VICTORY!", 0, SDL_Color{255,215,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
-            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 200), (float)titleSurf->w, (float)titleSurf->h};
+            SDL_FRect titleRect = {(float)(windowWidth/2 - titleSurf->w/2), (float)(windowHeight/2 - 210), (float)titleSurf->w, (float)titleSurf->h};
             SDL_RenderTexture(renderer, titleTex, NULL, &titleRect);
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
 
         char statText[128];
-        snprintf(statText, sizeof(statText), "Monsters Killed: %d", monsters);
-        SDL_Surface* mSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (mSurf) {
-            SDL_Texture* mTex = SDL_CreateTextureFromSurface(renderer, mSurf);
-            SDL_FRect mRect = {(float)(windowWidth/2 - mSurf->w/2), (float)(windowHeight/2 - 100), (float)mSurf->w, (float)mSurf->h};
-            SDL_RenderTexture(renderer, mTex, NULL, &mRect);
-            SDL_DestroyTexture(mTex); SDL_DestroySurface(mSurf);
+        int yOff = -180;
+        int leftX = windowWidth/2 - 300;
+        int rightX = windowWidth/2 + 50;
+
+        // Combat Stats
+        SDL_Surface* cat1 = TTF_RenderText_Solid(smallFont, "COMBAT STATS", 0, SDL_Color{255,215,0,255});
+        if (cat1) {
+            SDL_Texture* cat1Tex = SDL_CreateTextureFromSurface(renderer, cat1);
+            SDL_FRect cat1Rect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)cat1->w, (float)cat1->h};
+            SDL_RenderTexture(renderer, cat1Tex, NULL, &cat1Rect);
+            SDL_DestroyTexture(cat1Tex);
+            SDL_DestroySurface(cat1);
+            yOff += 30;
         }
 
-        snprintf(statText, sizeof(statText), "Ammo Spent: %d", ammo);
-        SDL_Surface* aSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (aSurf) {
-            SDL_Texture* aTex = SDL_CreateTextureFromSurface(renderer, aSurf);
-            SDL_FRect aRect = {(float)(windowWidth/2 - aSurf->w/2), (float)(windowHeight/2 - 60), (float)aSurf->w, (float)aSurf->h};
-            SDL_RenderTexture(renderer, aTex, NULL, &aRect);
-            SDL_DestroyTexture(aTex); SDL_DestroySurface(aSurf);
-        }
+        snprintf(statText, sizeof(statText), "Monsters Killed: %d", monsters);
+        SDL_Surface* mSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (mSurf) { SDL_Texture* mTex = SDL_CreateTextureFromSurface(renderer, mSurf); SDL_FRect mRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)mSurf->w, (float)mSurf->h}; SDL_RenderTexture(renderer, mTex, NULL, &mRect); SDL_DestroyTexture(mTex); SDL_DestroySurface(mSurf); yOff += 25; }
+
+        snprintf(statText, sizeof(statText), "Bosses Killed: %d", bosses);
+        SDL_Surface* bSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (bSurf) { SDL_Texture* bTex = SDL_CreateTextureFromSurface(renderer, bSurf); SDL_FRect bRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)bSurf->w, (float)bSurf->h}; SDL_RenderTexture(renderer, bTex, NULL, &bRect); SDL_DestroyTexture(bTex); SDL_DestroySurface(bSurf); yOff += 25; }
 
         snprintf(statText, sizeof(statText), "Damage Taken: %d", dmg);
         SDL_Surface* dSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
-        if (dSurf) {
-            SDL_Texture* dTex = SDL_CreateTextureFromSurface(renderer, dSurf);
-            SDL_FRect dRect = {(float)(windowWidth/2 - dSurf->w/2), (float)(windowHeight/2 - 20), (float)dSurf->w, (float)dSurf->h};
-            SDL_RenderTexture(renderer, dTex, NULL, &dRect);
-            SDL_DestroyTexture(dTex); SDL_DestroySurface(dSurf);
+        if (dSurf) { SDL_Texture* dTex = SDL_CreateTextureFromSurface(renderer, dSurf); SDL_FRect dRect = {(float)leftX, (float)(windowHeight/2 + yOff), (float)dSurf->w, (float)dSurf->h}; SDL_RenderTexture(renderer, dTex, NULL, &dRect); SDL_DestroyTexture(dTex); SDL_DestroySurface(dSurf); yOff += 25; }
+
+        yOff = -180;
+        SDL_Surface* cat2 = TTF_RenderText_Solid(smallFont, "WEAPON STATS", 0, SDL_Color{255,215,0,255});
+        if (cat2) {
+            SDL_Texture* cat2Tex = SDL_CreateTextureFromSurface(renderer, cat2);
+            SDL_FRect cat2Rect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)cat2->w, (float)cat2->h};
+            SDL_RenderTexture(renderer, cat2Tex, NULL, &cat2Rect);
+            SDL_DestroyTexture(cat2Tex);
+            SDL_DestroySurface(cat2);
+            yOff += 30;
         }
+
+        snprintf(statText, sizeof(statText), "Shots Fired: %d", shots);
+        SDL_Surface* shSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (shSurf) { SDL_Texture* shTex = SDL_CreateTextureFromSurface(renderer, shSurf); SDL_FRect shRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)shSurf->w, (float)shSurf->h}; SDL_RenderTexture(renderer, shTex, NULL, &shRect); SDL_DestroyTexture(shTex); SDL_DestroySurface(shSurf); yOff += 25; }
+
+        snprintf(statText, sizeof(statText), "Ammo Spent: %d", ammo);
+        SDL_Surface* aSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (aSurf) { SDL_Texture* aTex = SDL_CreateTextureFromSurface(renderer, aSurf); SDL_FRect aRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)aSurf->w, (float)aSurf->h}; SDL_RenderTexture(renderer, aTex, NULL, &aRect); SDL_DestroyTexture(aTex); SDL_DestroySurface(aSurf); yOff += 25; }
+
+        float accuracy = (shots > 0) ? (float)monsters * 100.0f / shots : 0;
+        snprintf(statText, sizeof(statText), "Accuracy: %.1f%%", accuracy);
+        SDL_Surface* accSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (accSurf) { SDL_Texture* accTex = SDL_CreateTextureFromSurface(renderer, accSurf); SDL_FRect accRect = {(float)rightX, (float)(windowHeight/2 + yOff), (float)accSurf->w, (float)accSurf->h}; SDL_RenderTexture(renderer, accTex, NULL, &accRect); SDL_DestroyTexture(accTex); SDL_DestroySurface(accSurf); yOff += 25; }
+
+        // Pickups (внизу по центру)
+        yOff = -50;
+        SDL_Surface* cat3 = TTF_RenderText_Solid(smallFont, "PICKUPS", 0, SDL_Color{255,215,0,255});
+        if (cat3) {
+            SDL_Texture* cat3Tex = SDL_CreateTextureFromSurface(renderer, cat3);
+            SDL_FRect cat3Rect = {(float)(windowWidth/2 - cat3->w/2), (float)(windowHeight/2 + yOff), (float)cat3->w, (float)cat3->h};
+            SDL_RenderTexture(renderer, cat3Tex, NULL, &cat3Rect);
+            SDL_DestroyTexture(cat3Tex);
+            SDL_DestroySurface(cat3);
+            yOff += 30;
+        }
+
+        snprintf(statText, sizeof(statText), "Medkits Picked: %d", medkits);
+        SDL_Surface* mkSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (mkSurf) { SDL_Texture* mkTex = SDL_CreateTextureFromSurface(renderer, mkSurf); SDL_FRect mkRect = {(float)(windowWidth/2 - mkSurf->w/2 - 100), (float)(windowHeight/2 + yOff), (float)mkSurf->w, (float)mkSurf->h}; SDL_RenderTexture(renderer, mkTex, NULL, &mkRect); SDL_DestroyTexture(mkTex); SDL_DestroySurface(mkSurf); }
+
+        snprintf(statText, sizeof(statText), "Ammo Pickups: %d", ammoPickups);
+        SDL_Surface* apSurf = TTF_RenderText_Solid(smallFont, statText, 0, {255,255,255,255});
+        if (apSurf) { SDL_Texture* apTex = SDL_CreateTextureFromSurface(renderer, apSurf); SDL_FRect apRect = {(float)(windowWidth/2 - apSurf->w/2 + 100), (float)(windowHeight/2 + yOff), (float)apSurf->w, (float)apSurf->h}; SDL_RenderTexture(renderer, apTex, NULL, &apRect); SDL_DestroyTexture(apTex); SDL_DestroySurface(apSurf); }
 
         SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{150,150,150,255});
         if (restartSurf) {
             SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
-            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 80), (float)restartSurf->w, (float)restartSurf->h};
+            SDL_FRect textRect = {(float)(windowWidth/2 - restartSurf->w/2), (float)(windowHeight/2 + 180), (float)restartSurf->w, (float)restartSurf->h};
             SDL_RenderTexture(renderer, restartTex, NULL, &textRect);
             SDL_DestroyTexture(restartTex);
             SDL_DestroySurface(restartSurf);
@@ -519,7 +612,9 @@ bool showLevelCompleteScreen(SDL_Renderer* renderer, TTF_Font* font, int windowW
 }
 
 void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, int& windowHeight, SDL_Window* window) {
-    const std::vector<std::pair<int,int>> resolutions = {{1280,960}, {1024,768}, {800,600}};
+    const std::vector<std::pair<int,int>> resolutions = {
+        {1920,1200}, {1920,1080}, {1600,900}, {1366,768}, {1280,960}, {1024,768}, {800,600}
+    };
     int resIndex = 0;
     for (size_t i=0; i<resolutions.size(); ++i) {
         if (resolutions[i].first == g_settings.windowWidth && resolutions[i].second == g_settings.windowHeight) {
@@ -532,43 +627,96 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
     bool menuRunning = true;
     SDL_Event event;
 
+    struct Button {
+        SDL_FRect rect;
+        std::string label;
+        bool hover;
+    };
+    Button upBtn = {{(float)(windowWidth/2 + 100), 200, 40, 40}, "+", false};
+    Button downBtn = {{(float)(windowWidth/2 + 150), 200, 40, 40}, "-", false};
+    Button scaleLeftBtn = {{(float)(windowWidth/2 + 100), 280, 40, 40}, "<", false};
+    Button scaleRightBtn = {{(float)(windowWidth/2 + 150), 280, 40, 40}, ">", false};
+    Button soundBtn = {{(float)(windowWidth/2 + 100), 360, 100, 40}, soundEnabled ? "ON" : "OFF", false};
+    Button okBtn = {{(float)(windowWidth/2 - 100), 450, 80, 40}, "OK", false};
+    Button cancelBtn = {{(float)(windowWidth/2 + 20), 450, 80, 40}, "Cancel", false};
+
     while (menuRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { menuRunning = false; }
-            if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.scancode == SDL_SCANCODE_ESCAPE) menuRunning = false;
-                if (event.key.scancode == SDL_SCANCODE_UP) {
+            if (event.type == SDL_EVENT_MOUSE_MOTION) {
+                SDL_Point point = {static_cast<int>(event.motion.x), static_cast<int>(event.motion.y)};
+                SDL_Rect rect;
+                rect = {(int)upBtn.rect.x, (int)upBtn.rect.y, (int)upBtn.rect.w, (int)upBtn.rect.h};
+                upBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)downBtn.rect.x, (int)downBtn.rect.y, (int)downBtn.rect.w, (int)downBtn.rect.h};
+                downBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)scaleLeftBtn.rect.x, (int)scaleLeftBtn.rect.y, (int)scaleLeftBtn.rect.w, (int)scaleLeftBtn.rect.h};
+                scaleLeftBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)scaleRightBtn.rect.x, (int)scaleRightBtn.rect.y, (int)scaleRightBtn.rect.w, (int)scaleRightBtn.rect.h};
+                scaleRightBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)soundBtn.rect.x, (int)soundBtn.rect.y, (int)soundBtn.rect.w, (int)soundBtn.rect.h};
+                soundBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)okBtn.rect.x, (int)okBtn.rect.y, (int)okBtn.rect.w, (int)okBtn.rect.h};
+                okBtn.hover = SDL_PointInRect(&point, &rect);
+                rect = {(int)cancelBtn.rect.x, (int)cancelBtn.rect.y, (int)cancelBtn.rect.w, (int)cancelBtn.rect.h};
+                cancelBtn.hover = SDL_PointInRect(&point, &rect);
+            }
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
+                float mx = event.button.x, my = event.button.y;
+                if (mx >= upBtn.rect.x && mx <= upBtn.rect.x+upBtn.rect.w && my >= upBtn.rect.y && my <= upBtn.rect.y+upBtn.rect.h) {
                     resIndex = (resIndex - 1 + resolutions.size()) % resolutions.size();
                     g_settings.windowWidth = resolutions[resIndex].first;
                     g_settings.windowHeight = resolutions[resIndex].second;
                     SDL_SetWindowSize(window, g_settings.windowWidth, g_settings.windowHeight);
+                    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     windowWidth = g_settings.windowWidth;
                     windowHeight = g_settings.windowHeight;
                     saveSettings();
                 }
-                if (event.key.scancode == SDL_SCANCODE_DOWN) {
+                if (mx >= downBtn.rect.x && mx <= downBtn.rect.x+downBtn.rect.w && my >= downBtn.rect.y && my <= downBtn.rect.y+downBtn.rect.h) {
                     resIndex = (resIndex + 1) % resolutions.size();
                     g_settings.windowWidth = resolutions[resIndex].first;
                     g_settings.windowHeight = resolutions[resIndex].second;
                     SDL_SetWindowSize(window, g_settings.windowWidth, g_settings.windowHeight);
+                    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
                     windowWidth = g_settings.windowWidth;
                     windowHeight = g_settings.windowHeight;
                     saveSettings();
                 }
-                if (event.key.scancode == SDL_SCANCODE_LEFT) {
+                if (mx >= scaleLeftBtn.rect.x && mx <= scaleLeftBtn.rect.x+scaleLeftBtn.rect.w && my >= scaleLeftBtn.rect.y && my <= scaleLeftBtn.rect.y+scaleLeftBtn.rect.h) {
                     renderScaleIndex = (renderScaleIndex - 1 + 3) % 3;
                     g_settings.renderScale = (renderScaleIndex == 0 ? 1 : (renderScaleIndex == 1 ? 2 : 3));
                     saveSettings();
                 }
-                if (event.key.scancode == SDL_SCANCODE_RIGHT) {
+                if (mx >= scaleRightBtn.rect.x && mx <= scaleRightBtn.rect.x+scaleRightBtn.rect.w && my >= scaleRightBtn.rect.y && my <= scaleRightBtn.rect.y+scaleRightBtn.rect.h) {
                     renderScaleIndex = (renderScaleIndex + 1) % 3;
                     g_settings.renderScale = (renderScaleIndex == 0 ? 1 : (renderScaleIndex == 1 ? 2 : 3));
                     saveSettings();
                 }
-                if (event.key.scancode == SDL_SCANCODE_S) {
+                if (mx >= soundBtn.rect.x && mx <= soundBtn.rect.x+soundBtn.rect.w && my >= soundBtn.rect.y && my <= soundBtn.rect.y+soundBtn.rect.h) {
                     soundEnabled = !soundEnabled;
                     g_settings.soundEnabled = soundEnabled;
+                    soundBtn.label = soundEnabled ? "ON" : "OFF";
                     saveSettings();
+                }
+                if (mx >= okBtn.rect.x && mx <= okBtn.rect.x+okBtn.rect.w && my >= okBtn.rect.y && my <= okBtn.rect.y+okBtn.rect.h) {
+                    menuRunning = false;
+                }
+                if (mx >= cancelBtn.rect.x && mx <= cancelBtn.rect.x+cancelBtn.rect.w && my >= cancelBtn.rect.y && my <= cancelBtn.rect.y+cancelBtn.rect.h) {
+                    loadSettings();
+                    resIndex = 0;
+                    for (size_t i=0; i<resolutions.size(); ++i) {
+                        if (resolutions[i].first == g_settings.windowWidth && resolutions[i].second == g_settings.windowHeight) {
+                            resIndex = i;
+                            break;
+                        }
+                    }
+                    renderScaleIndex = g_settings.renderScale == 1 ? 0 : (g_settings.renderScale == 2 ? 1 : 2);
+                    soundEnabled = g_settings.soundEnabled;
+                    soundBtn.label = soundEnabled ? "ON" : "OFF";
+                    SDL_SetWindowSize(window, g_settings.windowWidth, g_settings.windowHeight);
+                    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    menuRunning = false;
                 }
             }
         }
@@ -586,45 +734,54 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         }
 
         char resText[128];
-        snprintf(resText, sizeof(resText), "Resolution: %dx%d (Use UP/DOWN)", g_settings.windowWidth, g_settings.windowHeight);
+        snprintf(resText, sizeof(resText), "Resolution: %dx%d", g_settings.windowWidth, g_settings.windowHeight);
         SDL_Surface* resSurf = TTF_RenderText_Solid(font, resText, 0, SDL_Color{200,200,200,255});
         if (resSurf) {
             SDL_Texture* resTex = SDL_CreateTextureFromSurface(renderer, resSurf);
-            SDL_FRect resRect = {(float)(windowWidth/2 - resSurf->w/2), 150, (float)resSurf->w, (float)resSurf->h};
+            SDL_FRect resRect = {(float)(windowWidth/2 - 150), 200, (float)resSurf->w, (float)resSurf->h};
             SDL_RenderTexture(renderer, resTex, NULL, &resRect);
             SDL_DestroyTexture(resTex);
             SDL_DestroySurface(resSurf);
         }
 
         char scaleText[128];
-        snprintf(scaleText, sizeof(scaleText), "Render Scale: %d (LEFT/RIGHT)", g_settings.renderScale);
+        snprintf(scaleText, sizeof(scaleText), "Render Scale: %d", g_settings.renderScale);
         SDL_Surface* scaleSurf = TTF_RenderText_Solid(font, scaleText, 0, SDL_Color{200,200,200,255});
         if (scaleSurf) {
             SDL_Texture* scaleTex = SDL_CreateTextureFromSurface(renderer, scaleSurf);
-            SDL_FRect scaleRect = {(float)(windowWidth/2 - scaleSurf->w/2), 220, (float)scaleSurf->w, (float)scaleSurf->h};
+            SDL_FRect scaleRect = {(float)(windowWidth/2 - 150), 280, (float)scaleSurf->w, (float)scaleSurf->h};
             SDL_RenderTexture(renderer, scaleTex, NULL, &scaleRect);
             SDL_DestroyTexture(scaleTex);
             SDL_DestroySurface(scaleSurf);
         }
 
         char soundText[128];
-        snprintf(soundText, sizeof(soundText), "Sound: %s (Press S to toggle)", soundEnabled ? "ON" : "OFF");
+        snprintf(soundText, sizeof(soundText), "Sound: %s", soundEnabled ? "ON" : "OFF");
         SDL_Surface* soundSurf = TTF_RenderText_Solid(font, soundText, 0, SDL_Color{200,200,200,255});
         if (soundSurf) {
             SDL_Texture* soundTex = SDL_CreateTextureFromSurface(renderer, soundSurf);
-            SDL_FRect soundRect = {(float)(windowWidth/2 - soundSurf->w/2), 290, (float)soundSurf->w, (float)soundSurf->h};
+            SDL_FRect soundRect = {(float)(windowWidth/2 - 150), 360, (float)soundSurf->w, (float)soundSurf->h};
             SDL_RenderTexture(renderer, soundTex, NULL, &soundRect);
             SDL_DestroyTexture(soundTex);
             SDL_DestroySurface(soundSurf);
         }
 
-        SDL_Surface* backSurf = TTF_RenderText_Solid(font, "Press ESC to return", 0, SDL_Color{150,150,150,255});
-        if (backSurf) {
-            SDL_Texture* backTex = SDL_CreateTextureFromSurface(renderer, backSurf);
-            SDL_FRect backRect = {(float)(windowWidth/2 - backSurf->w/2), 400, (float)backSurf->w, (float)backSurf->h};
-            SDL_RenderTexture(renderer, backTex, NULL, &backRect);
-            SDL_DestroyTexture(backTex);
-            SDL_DestroySurface(backSurf);
+        for (auto* btn : {&upBtn, &downBtn, &scaleLeftBtn, &scaleRightBtn, &soundBtn, &okBtn, &cancelBtn}) {
+            SDL_Color btnColor = btn->hover ? SDL_Color{150,150,150,255} : SDL_Color{100,100,100,255};
+            SDL_SetRenderDrawColor(renderer, btnColor.r, btnColor.g, btnColor.b, 255);
+            SDL_RenderFillRect(renderer, &btn->rect);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderRect(renderer, &btn->rect);
+            SDL_Surface* btnSurf = TTF_RenderText_Solid(font, btn->label.c_str(), 0, {255,255,255,255});
+            if (btnSurf) {
+                SDL_Texture* btnTex = SDL_CreateTextureFromSurface(renderer, btnSurf);
+                float textX = btn->rect.x + (btn->rect.w - btnSurf->w)/2;
+                float textY = btn->rect.y + (btn->rect.h - btnSurf->h)/2;
+                SDL_FRect textRect = {textX, textY, (float)btnSurf->w, (float)btnSurf->h};
+                SDL_RenderTexture(renderer, btnTex, NULL, &textRect);
+                SDL_DestroyTexture(btnTex);
+                SDL_DestroySurface(btnSurf);
+            }
         }
 
         SDL_RenderPresent(renderer);
@@ -707,12 +864,13 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
 }
 
 void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight,
-                   bool& gameRunning, SaveData& currentSave, bool& saveRequested, bool& loadRequested, bool& quitToMenu) {
+                   bool& gameRunning, SaveData& currentSave, bool& saveRequested, bool& loadRequested, bool& quitToMenu,
+                   SDL_Window* window) {
     bool inPause = true;
     SDL_Event event;
     while (inPause) {
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) { gameRunning = false; inPause = false; }
+            if (event.type == SDL_EVENT_QUIT) { gameRunning = false; inPause = false; quitToMenu = true; }
             if (event.type == SDL_EVENT_KEY_DOWN) {
                 if (event.key.scancode == SDL_SCANCODE_ESCAPE) { inPause = false; }
                 if (event.key.scancode == SDL_SCANCODE_S) {
@@ -722,6 +880,9 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
                 if (event.key.scancode == SDL_SCANCODE_L) {
                     loadRequested = true;
                     inPause = false;
+                }
+                if (event.key.scancode == SDL_SCANCODE_O) {
+                    showSettingsMenu(renderer, font, windowWidth, windowHeight, window);
                 }
                 if (event.key.scancode == SDL_SCANCODE_Q) {
                     quitToMenu = true;
@@ -769,10 +930,19 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
             SDL_DestroySurface(loadSurf);
         }
 
+        SDL_Surface* settingsSurf = TTF_RenderText_Solid(font, "Press O for Settings", 0, SDL_Color{200,200,200,255});
+        if (settingsSurf) {
+            SDL_Texture* settingsTex = SDL_CreateTextureFromSurface(renderer, settingsSurf);
+            SDL_FRect settingsRect = {(float)(windowWidth/2 - settingsSurf->w/2), 380, (float)settingsSurf->w, (float)settingsSurf->h};
+            SDL_RenderTexture(renderer, settingsTex, NULL, &settingsRect);
+            SDL_DestroyTexture(settingsTex);
+            SDL_DestroySurface(settingsSurf);
+        }
+
         SDL_Surface* quitSurf = TTF_RenderText_Solid(font, "Press Q to Quit to Menu", 0, SDL_Color{200,200,200,255});
         if (quitSurf) {
             SDL_Texture* quitTex = SDL_CreateTextureFromSurface(renderer, quitSurf);
-            SDL_FRect quitRect = {(float)(windowWidth/2 - quitSurf->w/2), 380, (float)quitSurf->w, (float)quitSurf->h};
+            SDL_FRect quitRect = {(float)(windowWidth/2 - quitSurf->w/2), 440, (float)quitSurf->w, (float)quitSurf->h};
             SDL_RenderTexture(renderer, quitTex, NULL, &quitRect);
             SDL_DestroyTexture(quitTex);
             SDL_DestroySurface(quitSurf);
@@ -825,9 +995,20 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     int totalMonstersKilled = 0;
     int totalAmmoSpent = 0;
     int totalDamageTaken = 0;
+    int totalShotsFired = 0;
+    int totalBossesKilled = 0;
+    int totalMedkitsPicked = 0;
+    int totalAmmoPicked = 0;
 
     if (isContinue && loadGame(saveData)) {
         currentLevel = saveData.level;
+        totalMonstersKilled = saveData.totalMonstersKilled;
+        totalAmmoSpent = saveData.totalAmmoSpent;
+        totalDamageTaken = saveData.totalDamageTaken;
+        totalShotsFired = saveData.totalShotsFired;
+        totalBossesKilled = saveData.totalBossesKilled;
+        totalMedkitsPicked = saveData.totalMedkitsPicked;
+        totalAmmoPicked = saveData.totalAmmoPicked;
     }
 
     while (currentLevel <= 3) {
@@ -968,6 +1149,12 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         bool saveRequested = false;
         bool loadRequested = false;
         bool quitToMenu = false;
+        bool quitGame = false;
+
+        float levelCompleteDelay = 0.0f;
+        bool levelCompletedTriggered = false;
+
+        ReloadState reloadState;
 
         while (!levelComplete && gameRunning) {
             Uint64 frameStart = SDL_GetTicks();
@@ -991,6 +1178,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 save.pistolMag = pistolMag;
                 save.shotgunMag = shotgunMag;
                 save.currentWeapon = currentWeapon;
+                save.totalMonstersKilled = totalMonstersKilled;
+                save.totalAmmoSpent = totalAmmoSpent;
+                save.totalDamageTaken = totalDamageTaken;
+                save.totalShotsFired = totalShotsFired;
+                save.totalBossesKilled = totalBossesKilled;
+                save.totalMedkitsPicked = totalMedkitsPicked;
+                save.totalAmmoPicked = totalAmmoPicked;
                 for (const auto& mob : mobs) {
                     save.mobs.emplace_back(mob.x, mob.y, (mob.type == BOSS) ? 4 : 2, mob.hp);
                 }
@@ -1012,10 +1206,15 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             const bool* keys = SDL_GetKeyboardState(nullptr);
 
             while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_EVENT_QUIT) { gameRunning = false; levelComplete = true; }
+                if (event.type == SDL_EVENT_QUIT) {
+                    gameRunning = false;
+                    levelComplete = true;
+                    quitToMenu = true;
+                    quitGame = true;
+                }
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE) {
                     showPauseMenu(renderer, font, g_settings.windowWidth, g_settings.windowHeight,
-                                  gameRunning, saveData, saveRequested, loadRequested, quitToMenu);
+                                  gameRunning, saveData, saveRequested, loadRequested, quitToMenu, window);
                     if (quitToMenu) { levelComplete = true; gameRunning = false; break; }
                     if (saveRequested) {
                         SaveData save;
@@ -1029,6 +1228,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         save.pistolMag = pistolMag;
                         save.shotgunMag = shotgunMag;
                         save.currentWeapon = currentWeapon;
+                        save.totalMonstersKilled = totalMonstersKilled;
+                        save.totalAmmoSpent = totalAmmoSpent;
+                        save.totalDamageTaken = totalDamageTaken;
+                        save.totalShotsFired = totalShotsFired;
+                        save.totalBossesKilled = totalBossesKilled;
+                        save.totalMedkitsPicked = totalMedkitsPicked;
+                        save.totalAmmoPicked = totalAmmoPicked;
                         for (const auto& mob : mobs) {
                             save.mobs.emplace_back(mob.x, mob.y, (mob.type == BOSS) ? 4 : 2, mob.hp);
                         }
@@ -1053,6 +1259,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                             pistolMag = load.pistolMag;
                             shotgunMag = load.shotgunMag;
                             currentWeapon = load.currentWeapon;
+                            totalMonstersKilled = load.totalMonstersKilled;
+                            totalAmmoSpent = load.totalAmmoSpent;
+                            totalDamageTaken = load.totalDamageTaken;
+                            totalShotsFired = load.totalShotsFired;
+                            totalBossesKilled = load.totalBossesKilled;
+                            totalMedkitsPicked = load.totalMedkitsPicked;
+                            totalAmmoPicked = load.totalAmmoPicked;
                             mobs.clear();
                             for (const auto& m : load.mobs) {
                                 float x,y; int type,hp;
@@ -1075,12 +1288,13 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 if (event.type == SDL_EVENT_KEY_DOWN) {
                     if (event.key.scancode == SDL_SCANCODE_1) currentWeapon = 0;
                     if (event.key.scancode == SDL_SCANCODE_2) currentWeapon = 1;
-                    if (event.key.scancode == SDL_SCANCODE_R) {
-                        reloadWeapon(currentWeapon, pistolAmmo, shotgunAmmo, pistolMag, shotgunMag);
+                    if (event.key.scancode == SDL_SCANCODE_R && !reloadState.inProgress) {
+                        float reloadTime = (currentWeapon == 0) ? 1.5f : 2.0f;
+                        startReload(reloadState, currentWeapon, reloadTime);
                     }
                 }
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
-                    if (now - lastShootTime >= SHOOT_DELAY_MS) {
+                    if (!reloadState.inProgress && (now - lastShootTime >= SHOOT_DELAY_MS)) {
                         lastShootTime = now;
                         shootFlashFrames = 2;
 
@@ -1089,13 +1303,18 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         performShot(player.x, player.y, player.angle,
                                     lines, vertices, mobs, bulletHoles, hitFlashes,
                                     pistolAmmo, shotgunAmmo, pistolMag, shotgunMag,
-                                    currentWeapon, playerHealth, playerMaxHealth);
+                                    currentWeapon, playerHealth, playerMaxHealth,
+                                    totalShotsFired);
 
                         int ammoNow = (currentWeapon == 0) ? pistolAmmo + pistolMag : shotgunAmmo + shotgunMag;
                         totalAmmoSpent += (ammoPrev - ammoNow);
                     }
                 }
             }
+
+            if (quitGame) break;
+
+            updateReload(reloadState, dt, pistolAmmo, shotgunAmmo, pistolMag, shotgunMag);
 
             float move = player.speed * dt;
             float turn = 4.0f * dt;
@@ -1153,12 +1372,15 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     pickup.active = false;
                     if (pickup.type == 2011) {
                         playerHealth = std::min(playerMaxHealth, playerHealth + 60);
+                        totalMedkitsPicked++;
                         std::cout << "Picked up medkit! HP: " << playerHealth << std::endl;
                     } else if (pickup.type == 2007) {
                         pistolAmmo = std::min(MAX_PISTOL_AMMO, pistolAmmo + 30);
+                        totalAmmoPicked++;
                         std::cout << "Picked up pistol ammo! Total: " << pistolAmmo << std::endl;
                     } else if (pickup.type == 2008) {
                         shotgunAmmo = std::min(MAX_SHOTGUN_AMMO, shotgunAmmo + 12);
+                        totalAmmoPicked++;
                         std::cout << "Picked up shotgun ammo! Total: " << shotgunAmmo << std::endl;
                     }
                 }
@@ -1187,6 +1409,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                             state.deathTimer = 1.0f;
                             bossDying = true;
                             bossDeathTimer = 1.0f;
+                            totalBossesKilled++;
                             achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
                         }
                     }
@@ -1194,7 +1417,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
                 if (now - mob.lastUpdateTime >= MOB_UPDATE_INTERVAL_MS) {
                     mob.lastUpdateTime = now;
-                    // Призыв миньонов (босс)
                     if (mob.type == BOSS && bossPtr != nullptr) {
                         if (mob.summonCooldown > 0.0f) {
                             mob.summonCooldown -= dt;
@@ -1302,37 +1524,43 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            bool readyToExit = false;
-            if (mobs.empty() && !bossDying) {
-                if (initialMobCount > 0) {
-                    readyToExit = true;
-                    achievements.push_back({"LEVEL " + std::to_string(currentLevel) + " COMPLETED", 3.0f, 3.0f});
-                } else {
-                    if (keys[SDL_SCANCODE_RETURN]) {
-                        readyToExit = true;
-                        achievements.push_back({"LEVEL " + std::to_string(currentLevel) + " COMPLETED", 3.0f, 3.0f});
-                    }
+            if (mobs.empty() && !bossDying && !levelCompletedTriggered) {
+                if (initialMobCount > 0 || keys[SDL_SCANCODE_RETURN]) {
+                    levelCompletedTriggered = true;
+                    levelCompleteDelay = 2.0f;
+                    achievements.push_back({"LEVEL " + std::to_string(currentLevel) + " COMPLETED", 2.0f, 2.0f});
                 }
             }
+
+            if (levelCompleteDelay > 0.0f && levelCompletedTriggered) {
+                levelCompleteDelay -= dt;
+                if (levelCompleteDelay <= 0.0f) {
+                    levelComplete = true;
+                }
+            }
+
             if (bossDying && bossDeathTimer > 0) {
                 bossDeathTimer -= dt;
                 if (bossDeathTimer <= 0.0f) {
-                    showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, totalMonstersKilled, totalAmmoSpent, totalDamageTaken);
+                    showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight,
+                                      totalMonstersKilled, totalAmmoSpent, totalDamageTaken, totalShotsFired,
+                                      totalBossesKilled, totalMedkitsPicked, totalAmmoPicked);
                     return true;
                 }
-            }
-            if (readyToExit) {
-                if (currentLevel < 3) {
-                    bool next = showLevelCompleteScreen(renderer, font, g_settings.windowWidth, g_settings.windowHeight, currentLevel);
-                    if (!next) return true;
-                } else {
-                    showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, totalMonstersKilled, totalAmmoSpent, totalDamageTaken);
-                    return true;
-                }
-                levelComplete = true;
-                break;
             }
 
+            if (levelComplete && currentLevel < 3 && !bossDying && !quitGame) {
+                bool next = showLevelCompleteScreen(renderer, font, g_settings.windowWidth, g_settings.windowHeight, currentLevel);
+                if (!next) return true;
+                break;
+            } else if (levelComplete && currentLevel == 3 && !bossDying && !quitGame) {
+                showVictoryScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight,
+                                  totalMonstersKilled, totalAmmoSpent, totalDamageTaken, totalShotsFired,
+                                  totalBossesKilled, totalMedkitsPicked, totalAmmoPicked);
+                return true;
+            }
+
+            // Обновление анимаций и пуль
             for (auto it = bulletHoles.begin(); it != bulletHoles.end(); ) {
                 it->lifetime--;
                 if (it->lifetime <= 0) it = bulletHoles.erase(it);
@@ -1349,6 +1577,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 else ++it;
             }
 
+            // Рендер
             SDL_SetRenderDrawColor(renderer, 0,0,0,255);
             SDL_RenderClear(renderer);
             SDL_SetRenderDrawColor(renderer, 26, 20, 16, 255);
@@ -1366,8 +1595,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 int endX = (i == numThreads - 1) ? RENDER_WIDTH : (i + 1) * chunk;
                 futures.push_back(std::async(std::launch::async,
                     [startX, endX, &allColumns, &player, &gameMap, RENDER_WIDTH]() {
-                            renderColumnsRangeDirect(startX, endX, allColumns, player, gameMap, RENDER_WIDTH, g_settings.windowHeight);
-                }));
+                        renderColumnsRangeDirect(startX, endX, allColumns, player, gameMap, RENDER_WIDTH, g_settings.windowHeight);
+                    }));
             }
             for (auto& fut : futures) fut.get();
 
@@ -1504,7 +1733,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_RenderTexture(renderer, currentWeaponTex->texture, &srcRect, &dstRect);
             }
 
-            // ========== БАРЫ ЗДОРОВЬЯ И ПАТРОНОВ ==========
             const int BAR_X = 30;
             const int BAR_Y = g_settings.windowHeight - 100;
             const int BAR_WIDTH = 250;
@@ -1545,8 +1773,12 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             SDL_RenderRect(renderer, &magBg);
 
             char ammoText[64];
-            snprintf(ammoText, sizeof(ammoText), "%s: %d/%d", (currentWeapon == 0) ? "PISTOL" : "SHOTGUN",
-                     currentAmmoMag, (currentWeapon == 0) ? PISTOL_MAG_SIZE : SHOTGUN_MAG_SIZE);
+            if (reloadState.inProgress) {
+                snprintf(ammoText, sizeof(ammoText), "RELOADING...");
+            } else {
+                snprintf(ammoText, sizeof(ammoText), "%s: %d/%d", (currentWeapon == 0) ? "PISTOL" : "SHOTGUN",
+                         currentAmmoMag, (currentWeapon == 0) ? PISTOL_MAG_SIZE : SHOTGUN_MAG_SIZE);
+            }
             SDL_Surface* ammoSurf = TTF_RenderText_Solid(smallFont, ammoText, 0, {255,255,255,255});
             if (ammoSurf) {
                 SDL_Texture* ammoTex = SDL_CreateTextureFromSurface(renderer, ammoSurf);
@@ -1575,7 +1807,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
 
             char monstersText[32];
             snprintf(monstersText, sizeof(monstersText), "MONSTERS: %d", aliveMobs);
-            SDL_Surface* monstersSurf = TTF_RenderText_Solid(smallFont, monstersText, 0, {255, 255, 255, 255});
+            SDL_Surface* monstersSurf = TTF_RenderText_Solid(smallFont, monstersText, 0, {255,255,255,255});
             if (monstersSurf) {
                 SDL_Texture* monstersTex = SDL_CreateTextureFromSurface(renderer, monstersSurf);
                 SDL_FRect monstersRect = { (float)(g_settings.windowWidth - monstersSurf->w - 20), rightCornerY, (float)monstersSurf->w, (float)monstersSurf->h };
@@ -1589,7 +1821,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             else if (currentLevel == 2) snprintf(achText, sizeof(achText), "LEVELS CLEARED: 1");
             else snprintf(achText, sizeof(achText), "LEVELS CLEARED: 1, 2");
 
-            SDL_Surface* achSurf = TTF_RenderText_Solid(smallFont, achText, 0, {255, 215, 0, 255});
+            SDL_Surface* achSurf = TTF_RenderText_Solid(smallFont, achText, 0, {255,215,0,255});
             if (achSurf) {
                 SDL_Texture* achTex = SDL_CreateTextureFromSurface(renderer, achSurf);
                 SDL_FRect achRect = { (float)(g_settings.windowWidth - achSurf->w - 20), rightCornerY + 25.0f, (float)achSurf->w, (float)achSurf->h };
@@ -1601,21 +1833,26 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             float achY = 80.0f;
             for (const auto& ach : achievements) {
                 float alpha = std::min(1.0f, ach.lifetime / ach.maxLifetime);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, (Uint8)(180 * alpha));
+                SDL_FRect bgRect = { (float)(g_settings.windowWidth - 320), achY - 5, 300, 35 };
+                SDL_RenderFillRect(renderer, &bgRect);
+                SDL_SetRenderDrawColor(renderer, 255, 215, 0, (Uint8)(255 * alpha));
+                SDL_RenderRect(renderer, &bgRect);
                 SDL_Color color = {255, 215, 0, (Uint8)(255 * alpha)};
                 SDL_Surface* achSurfPop = TTF_RenderText_Solid(smallFont, ach.text.c_str(), 0, color);
                 if (achSurfPop) {
                     SDL_Texture* achTexPop = SDL_CreateTextureFromSurface(renderer, achSurfPop);
-                    SDL_FRect achRect = { (float)(g_settings.windowWidth - achSurfPop->w - 20), achY, (float)achSurfPop->w, (float)achSurfPop->h };
+                    SDL_FRect achRect = { (float)(g_settings.windowWidth - 310), achY, (float)achSurfPop->w, (float)achSurfPop->h };
                     SDL_RenderTexture(renderer, achTexPop, NULL, &achRect);
                     SDL_DestroyTexture(achTexPop);
                     SDL_DestroySurface(achSurfPop);
-                    achY += achSurfPop->h + 5;
+                    achY += 40;
                 }
             }
 
             if (initialMobCount == 0 && mobs.empty() && !bossDying) {
                 std::string skipText = "MAP IS EMPTY! PRESS ENTER TO SKIP LEVEL.";
-                SDL_Surface* skipSurf = TTF_RenderText_Solid(font, skipText.c_str(), 0, {255, 255, 0, 255});
+                SDL_Surface* skipSurf = TTF_RenderText_Solid(font, skipText.c_str(), 0, {255,255,0,255});
                 if (skipSurf) {
                     SDL_Texture* skipTex = SDL_CreateTextureFromSurface(renderer, skipSurf);
                     SDL_FRect skipRect = {(float)(g_settings.windowWidth/2 - skipSurf->w/2), 120.0f, (float)skipSurf->w, (float)skipSurf->h};
@@ -1642,6 +1879,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 SDL_Delay(TARGET_FRAME_DURATION - elapsed);
             }
         }
+
+        if (quitGame) return false;
 
         if (currentLevel < 3) {
             currentLevel++;

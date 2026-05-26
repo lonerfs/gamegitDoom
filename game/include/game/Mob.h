@@ -46,7 +46,7 @@ struct Mob {
     float wanderTimer;
     float wanderAngle;
     float wanderSpeed;
-    
+
     Uint32 lastUpdateTime;
 
     Mob(float _x, float _y, MobType _type) : x(_x), y(_y), type(_type), state(IDLE),
