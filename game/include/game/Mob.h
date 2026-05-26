@@ -68,7 +68,7 @@ struct Mob {
                 wanderSpeed = 180.0f;
                 break;
             case BOSS:
-                hp = 400; maxHp = 400;
+                hp = 1000; maxHp = 1000;
                 speed = 280.0f;
                 size = 96;
                 attackRange = 120.0f;
@@ -76,7 +76,7 @@ struct Mob {
                 projectileSpeed = 500.0f;
                 projectileDamage = 35;
                 fireCooldown = 0.0f;
-                summonCooldown = 2.0f;
+                summonCooldown = 4.2f;
                 isSummoning = false;
                 wanderSpeed = 140.0f;
                 break;
@@ -206,7 +206,7 @@ struct Mob {
         float dist = std::sqrt(dx*dx + dy*dy);
 
         if (dist < attackRange && attackCooldown <= 0.0f) {
-            int damage = (type == BOSS) ? 30 : 20;
+            int damage = (type == BOSS) ? 15 : 10;
             playerHealth -= damage;
             attackCooldown = 1.5f;
             if (playerHealth < 0) playerHealth = 0;
@@ -215,10 +215,6 @@ struct Mob {
     }
 
     void takeDamage(int dmg) {
-        if (type == BOSS && summonCount > 0) {
-            std::cout << "Boss is protected by minions! (" << summonCount << " alive)" << std::endl;
-            return;
-        }
         hp -= dmg;
         if (hp < 0) hp = 0;
         awakened = true;
