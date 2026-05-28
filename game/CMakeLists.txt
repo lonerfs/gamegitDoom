@@ -38,7 +38,6 @@ add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${SDL3_IMAGE_BASE}/bin/SDL3_image.dll $<TARGET_FILE_DIR:game>/SDL3_image.dll
 )
 
-# Копирование всех текстур
 add_custom_command(TARGET game POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/textures/stena.png $<TARGET_FILE_DIR:game>/stena.png
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/lib/textures/mob_walking.png $<TARGET_FILE_DIR:game>/mob_walking.png

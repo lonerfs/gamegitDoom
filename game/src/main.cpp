@@ -20,6 +20,7 @@
 #include "game/RenderThread.h"
 #include "game/Mob.h"
 
+// ========== СТРУКТУРЫ ==========
 struct BulletHole {
     float x, y;
     int lifetime;
@@ -59,6 +60,176 @@ struct GameSettings {
 
 GameSettings g_settings;
 
+// ========== ЗВУК ==========
+struct SoundEffect {
+    Uint8* data = nullptr;
+    Uint32 len = 0;
+    SDL_AudioSpec spec;
+};
+
+static SDL_AudioDeviceID g_audioDevice = 0;
+static SDL_AudioStream* g_musicStream = nullptr;
+static Uint8* g_musicData = nullptr;
+static Uint32 g_musicLen = 0;
+static SDL_AudioSpec g_musicSpec;
+
+static SoundEffect g_soundBossDead;
+static SoundEffect g_soundBossShoot;
+static SoundEffect g_soundEndGame;
+static SoundEffect g_soundEndRound;
+static SoundEffect g_soundLooseRound;
+static SoundEffect g_soundMainMenu;
+static SoundEffect g_soundNpcDead;
+static SoundEffect g_soundNpcShoot;
+static SoundEffect g_soundPistolReload;
+static SoundEffect g_soundPistolShoot;
+static SoundEffect g_soundRoundSound;
+static SoundEffect g_soundShotgunReload;
+static SoundEffect g_soundShotgunShoot;
+
+bool initAudio() {
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+        std::cerr << "SDL_AUDIO init failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+    SDL_AudioSpec desired;
+    SDL_zero(desired);
+    desired.freq = 44100;
+    desired.format = SDL_AUDIO_S16;
+    desired.channels = 2;
+    g_audioDevice = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired);
+    if (g_audioDevice == 0) {
+        std::cerr << "Open audio device failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+    SDL_ResumeAudioDevice(g_audioDevice);
+    SDL_SetAudioDeviceGain(g_audioDevice, 1.0f);
+    std::cout << "Audio initialized (44100 Hz, S16, stereo)" << std::endl;
+    return true;
+}
+
+bool loadSound(SoundEffect& sound, const char* filename) {
+    if (!SDL_LoadWAV(filename, &sound.spec, &sound.data, &sound.len)) {
+        std::cerr << "Failed to load " << filename << ": " << SDL_GetError() << std::endl;
+        return false;
+    }
+    std::cout << "Loaded: " << filename << std::endl;
+    return true;
+}
+
+void playSound(const SoundEffect& sound) {
+    if (!g_settings.soundEnabled) return;
+    if (!sound.data) return;
+
+    SDL_AudioSpec deviceSpec;
+    SDL_GetAudioDeviceFormat(g_audioDevice, &deviceSpec, nullptr);
+
+    SDL_AudioStream* stream = SDL_CreateAudioStream(&sound.spec, &deviceSpec);
+    if (!stream) {
+        std::cerr << "CreateAudioStream failed: " << SDL_GetError() << std::endl;
+        return;
+    }
+    if (SDL_PutAudioStreamData(stream, sound.data, sound.len) < 0) {
+        std::cerr << "PutAudioStreamData failed: " << SDL_GetError() << std::endl;
+        SDL_DestroyAudioStream(stream);
+        return;
+    }
+    if (!SDL_BindAudioStream(g_audioDevice, stream)) {
+        std::cerr << "BindAudioStream failed: " << SDL_GetError() << std::endl;
+        SDL_DestroyAudioStream(stream);
+        return;
+    }
+    SDL_SetAudioStreamGain(stream, 1.0f);
+}
+
+bool loadMusic(const char* filename) {
+    if (!SDL_LoadWAV(filename, &g_musicSpec, &g_musicData, &g_musicLen)) {
+        std::cerr << "Failed to load music: " << SDL_GetError() << std::endl;
+        return false;
+    }
+    g_musicStream = SDL_CreateAudioStream(&g_musicSpec, nullptr);
+    if (!g_musicStream) {
+        std::cerr << "CreateAudioStream for music failed: " << SDL_GetError() << std::endl;
+        SDL_free(g_musicData);
+        g_musicData = nullptr;
+        return false;
+    }
+    if (!SDL_BindAudioStream(g_audioDevice, g_musicStream)) {
+        std::cerr << "BindAudioStream for music failed: " << SDL_GetError() << std::endl;
+        SDL_DestroyAudioStream(g_musicStream);
+        SDL_free(g_musicData);
+        g_musicStream = nullptr;
+        g_musicData = nullptr;
+        return false;
+    }
+    SDL_PutAudioStreamData(g_musicStream, g_musicData, g_musicLen);
+    return true;
+}
+
+void updateMusic() {
+    if (!g_musicStream || !g_musicData) return;
+    if (SDL_GetAudioStreamQueued(g_musicStream) < (int)g_musicLen / 2) {
+        SDL_PutAudioStreamData(g_musicStream, g_musicData, g_musicLen);
+    }
+}
+
+void stopMusic() {
+    if (g_musicStream) {
+        SDL_ClearAudioStream(g_musicStream);
+        SDL_DestroyAudioStream(g_musicStream);
+        g_musicStream = nullptr;
+    }
+    if (g_musicData) {
+        SDL_free(g_musicData);
+        g_musicData = nullptr;
+    }
+}
+
+void cleanupSounds() {
+    stopMusic();
+    auto freeSound = [](SoundEffect& s) {
+        if (s.data) {
+            SDL_free(s.data);
+            s.data = nullptr;
+        }
+    };
+    freeSound(g_soundBossDead);
+    freeSound(g_soundBossShoot);
+    freeSound(g_soundEndGame);
+    freeSound(g_soundEndRound);
+    freeSound(g_soundLooseRound);
+    freeSound(g_soundMainMenu);
+    freeSound(g_soundNpcDead);
+    freeSound(g_soundNpcShoot);
+    freeSound(g_soundPistolReload);
+    freeSound(g_soundPistolShoot);
+    freeSound(g_soundRoundSound);
+    freeSound(g_soundShotgunReload);
+    freeSound(g_soundShotgunShoot);
+
+    if (g_audioDevice) {
+        SDL_CloseAudioDevice(g_audioDevice);
+        g_audioDevice = 0;
+    }
+}
+
+void loadAllSounds() {
+    loadSound(g_soundBossDead, "sounds/boss_dead.wav");
+    loadSound(g_soundBossShoot, "sounds/boss_shoot.wav");
+    loadSound(g_soundNpcDead, "sounds/npc_dead.wav");
+    loadSound(g_soundNpcShoot, "sounds/npc_shoot.wav");
+    loadSound(g_soundPistolShoot, "sounds/pistol_shoot.wav");
+    loadSound(g_soundPistolReload, "sounds/pistol_reload.wav");
+    loadSound(g_soundShotgunShoot, "sounds/shotgun_shoot.wav");
+    loadSound(g_soundShotgunReload, "sounds/shotgun_reload.wav");
+    loadSound(g_soundEndGame, "sounds/end_game.wav");
+    loadSound(g_soundEndRound, "sounds/end_round.wav");
+    loadSound(g_soundLooseRound, "sounds/loose_round.wav");
+    loadSound(g_soundMainMenu, "sounds/main_menu.wav");
+    loadSound(g_soundRoundSound, "sounds/round_sound.wav");
+}
+
+// ========== НАСТРОЙКИ И СОХРАНЕНИЕ ==========
 void saveSettings() {
     std::ofstream file("settings.dat", std::ios::binary);
     if (file) {
@@ -71,6 +242,11 @@ void loadSettings() {
     if (file) {
         file.read((char*)&g_settings, sizeof(g_settings));
     } else {
+        saveSettings();
+    }
+    if (!g_settings.soundEnabled) {
+        std::cout << "Sound was disabled in settings, enabling now." << std::endl;
+        g_settings.soundEnabled = true;
         saveSettings();
     }
 }
@@ -216,6 +392,7 @@ bool saveFileExists() {
     return file.good();
 }
 
+// ========== ТЕКСТУРЫ И ОТРИСОВКА ==========
 Texture loadTexture(SDL_Renderer* renderer, const char* filename) {
     Texture tex = {nullptr, 64, 64, {}};
     SDL_Surface* surf = IMG_Load(filename);
@@ -285,6 +462,7 @@ void drawWallColumn(SDL_Renderer* renderer, int x, int top, int bottom, int texX
     SDL_RenderTexture(renderer, tex.texture, &srcRect, &dstRect);
 }
 
+// ========== ГЕОМЕТРИЯ И СТРЕЛЬБА ==========
 bool rayIntersectsMob(float x0, float y0, float dx, float dy,
                       const Mob& mob, float& dist, float& hitX, float& hitY) {
     float half = mob.size / 2.0f;
@@ -397,6 +575,12 @@ void startReload(ReloadState& reload, int weaponType, float duration) {
     reload.inProgress = true;
     reload.timer = duration;
     reload.weaponType = weaponType;
+
+    if (weaponType == 0) {
+        playSound(g_soundPistolReload);
+    } else {
+        playSound(g_soundShotgunReload);
+    }
     std::cout << "Reloading..." << std::endl;
 }
 
@@ -445,6 +629,7 @@ bool isPointVisible(float px, float py, float tx, float ty,
     return true;
 }
 
+// ========== ЭКРАНЫ СТАТИСТИКИ И МЕНЮ ==========
 void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight,
                           const SaveData& stats) {
     bool waiting = true;
@@ -460,7 +645,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
         }
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
-
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "GAME OVER", 0, SDL_Color{255,0,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
@@ -469,15 +653,12 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-
         SDL_SetRenderDrawColor(renderer, 255,215,0,255);
         SDL_FRect mainRect = {(float)(windowWidth/2 - 360), (float)(windowHeight/2 - 220), 720, 440};
         SDL_RenderRect(renderer, &mainRect);
-
         int xLeft = windowWidth/2 - 340;
         int yPos = windowHeight/2 - 180;
         int lineHeight = 28;
-
         auto drawStatLine = [&](const std::string& label, int value, int xOff = 0) {
             char buf[128];
             snprintf(buf, sizeof(buf), "%s: %d", label.c_str(), value);
@@ -491,7 +672,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
             }
             yPos += lineHeight;
         };
-
         SDL_Surface* cat1 = TTF_RenderText_Solid(smallFont, "=== COMBAT STATS ===", 0, SDL_Color{255,215,0,255});
         if (cat1) {
             SDL_Texture* cat1Tex = SDL_CreateTextureFromSurface(renderer, cat1);
@@ -506,7 +686,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
         drawStatLine("Damage Taken", stats.totalDamageTaken);
         drawStatLine("Levels Completed", stats.totalLevelsCompleted);
         yPos += 10;
-
         SDL_Surface* cat2 = TTF_RenderText_Solid(smallFont, "=== WEAPON STATS ===", 0, SDL_Color{255,215,0,255});
         if (cat2) {
             SDL_Texture* cat2Tex = SDL_CreateTextureFromSurface(renderer, cat2);
@@ -531,7 +710,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
             yPos += lineHeight;
         }
         yPos += 10;
-
         SDL_Surface* cat3 = TTF_RenderText_Solid(smallFont, "=== PICKUPS ===", 0, SDL_Color{255,215,0,255});
         if (cat3) {
             SDL_Texture* cat3Tex = SDL_CreateTextureFromSurface(renderer, cat3);
@@ -543,7 +721,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
         }
         drawStatLine("Medkits Picked", stats.totalMedkitsPicked);
         drawStatLine("Ammo Pickups", stats.totalAmmoPicked);
-
         yPos += 10;
         if (stats.totalMonstersEncountered > 0) {
             float killRate = (float)stats.totalMonstersKilled / stats.totalMonstersEncountered * 100.0f;
@@ -559,7 +736,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
                 yPos += lineHeight;
             }
         }
-
         SDL_Surface* continueSurf = TTF_RenderText_Solid(font, "Press ENTER or ESC to continue", 0, SDL_Color{150,150,150,255});
         if (continueSurf) {
             SDL_Texture* continueTex = SDL_CreateTextureFromSurface(renderer, continueSurf);
@@ -576,7 +752,6 @@ void showDeathStatsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smal
 void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFont, int windowWidth, int windowHeight) {
     SaveData save;
     bool hasSave = loadGame(save);
-
     bool waiting = true;
     SDL_Event event;
     while (waiting) {
@@ -590,7 +765,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
         }
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
-
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "ACHIEVEMENTS", 0, SDL_Color{255,215,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
@@ -599,11 +773,9 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-
         SDL_SetRenderDrawColor(renderer, 255,215,0,255);
         SDL_FRect borderRect = {(float)(windowWidth/2 - 320), (float)(windowHeight/2 - 200), 640, 380};
         SDL_RenderRect(renderer, &borderRect);
-
         struct Achievement {
             std::string name;
             bool unlocked;
@@ -615,7 +787,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
             {"Boss Slayer", hasSave ? save.achBossKilled : false},
             {"Zombie Hunter (50 kills)", hasSave ? save.achKill50 : false}
         };
-
         int yStart = windowHeight/2 - 120;
         for (size_t i = 0; i < achievements.size(); ++i) {
             std::string displayText = achievements[i].unlocked ? "✓ " + achievements[i].name : "✗ " + achievements[i].name;
@@ -629,7 +800,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
                 SDL_DestroySurface(achSurf);
             }
         }
-
         if (hasSave) {
             int yStats = yStart + achievements.size() * 45 + 20;
             SDL_Surface* statsHeader = TTF_RenderText_Solid(smallFont, "SESSION STATS", 0, SDL_Color{255,215,0,255});
@@ -641,7 +811,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
                 SDL_DestroySurface(statsHeader);
                 yStats += 30;
             }
-
             char totalStats[256];
             snprintf(totalStats, sizeof(totalStats), "Total Kills: %d   |   Total Bosses: %d   |   Total Damage: %d",
                      save.totalMonstersKilled, save.totalBossesKilled, save.totalDamageTaken);
@@ -654,7 +823,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
                 SDL_DestroySurface(statsSurf);
                 yStats += 25;
             }
-
             char accStats[128];
             float accuracy = (save.totalShotsFired > 0) ? (float)save.totalMonstersKilled * 100.0f / save.totalShotsFired : 0.0f;
             snprintf(accStats, sizeof(accStats), "Accuracy: %.1f%%   |   Shots: %d   |   Ammo Spent: %d",
@@ -677,7 +845,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
                 SDL_DestroySurface(noSaveSurf);
             }
         }
-
         SDL_Surface* backSurf = TTF_RenderText_Solid(font, "Press ESC or ENTER to return", 0, SDL_Color{150,150,150,255});
         if (backSurf) {
             SDL_Texture* backTex = SDL_CreateTextureFromSurface(renderer, backSurf);
@@ -686,7 +853,6 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
             SDL_DestroyTexture(backTex);
             SDL_DestroySurface(backSurf);
         }
-
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
@@ -743,7 +909,6 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         }
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
-
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "VICTORY!", 0, SDL_Color{255,215,0,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
@@ -752,15 +917,12 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-
         SDL_SetRenderDrawColor(renderer, 255,215,0,255);
         SDL_FRect mainRect = {(float)(windowWidth/2 - 360), (float)(windowHeight/2 - 200), 720, 400};
         SDL_RenderRect(renderer, &mainRect);
-
         int xLeft = windowWidth/2 - 340;
         int yPos = windowHeight/2 - 160;
         int lineHeight = 28;
-
         auto drawStatLine = [&](const std::string& label, int value, int xOff = 0) {
             char buf[128];
             snprintf(buf, sizeof(buf), "%s: %d", label.c_str(), value);
@@ -774,7 +936,6 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
             }
             yPos += lineHeight;
         };
-
         drawStatLine("Monsters Killed", stats.totalMonstersKilled);
         drawStatLine("Bosses Killed", stats.totalBossesKilled);
         drawStatLine("Damage Taken", stats.totalDamageTaken);
@@ -795,7 +956,6 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
         drawStatLine("Medkits Picked", stats.totalMedkitsPicked);
         drawStatLine("Ammo Pickups", stats.totalAmmoPicked);
         drawStatLine("Levels Completed", stats.totalLevelsCompleted);
-
         SDL_Surface* restartSurf = TTF_RenderText_Solid(font, "Press R or ENTER to go to Main Menu", 0, SDL_Color{150,150,150,255});
         if (restartSurf) {
             SDL_Texture* restartTex = SDL_CreateTextureFromSurface(renderer, restartSurf);
@@ -863,13 +1023,11 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
     bool soundEnabled = g_settings.soundEnabled;
     bool menuRunning = true;
     SDL_Event event;
-
     struct Button {
         SDL_FRect rect;
         std::string label;
         bool hover;
     };
-
     auto updatePositions = [&](Button& upBtn, Button& downBtn, Button& scaleLeftBtn, Button& scaleRightBtn, Button& soundBtn, Button& okBtn, Button& cancelBtn) {
         upBtn.rect = {(float)(windowWidth/2 + 80), 200, 40, 40};
         downBtn.rect = {(float)(windowWidth/2 + 130), 200, 40, 40};
@@ -879,7 +1037,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
         okBtn.rect = {(float)(windowWidth/2 - 100), 450, 80, 40};
         cancelBtn.rect = {(float)(windowWidth/2 + 20), 450, 80, 40};
     };
-
     Button upBtn = {{(float)(windowWidth/2 + 80), 200, 40, 40}, "+", false};
     Button downBtn = {{(float)(windowWidth/2 + 130), 200, 40, 40}, "-", false};
     Button scaleLeftBtn = {{(float)(windowWidth/2 + 80), 280, 40, 40}, "<", false};
@@ -887,7 +1044,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
     Button soundBtn = {{(float)(windowWidth/2 + 80), 360, 100, 40}, soundEnabled ? "ON" : "OFF", false};
     Button okBtn = {{(float)(windowWidth/2 - 100), 450, 80, 40}, "OK", false};
     Button cancelBtn = {{(float)(windowWidth/2 + 20), 450, 80, 40}, "Cancel", false};
-
     while (menuRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { menuRunning = false; }
@@ -973,10 +1129,8 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
                 }
             }
         }
-
         SDL_SetRenderDrawColor(renderer, 0,0,0,255);
         SDL_RenderClear(renderer);
-
         SDL_Surface* titleSurf = TTF_RenderText_Solid(font, "SETTINGS", 0, SDL_Color{255,255,255,255});
         if (titleSurf) {
             SDL_Texture* titleTex = SDL_CreateTextureFromSurface(renderer, titleSurf);
@@ -985,7 +1139,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
             SDL_DestroyTexture(titleTex);
             SDL_DestroySurface(titleSurf);
         }
-
         char resText[128];
         snprintf(resText, sizeof(resText), "Resolution: %dx%d", g_settings.windowWidth, g_settings.windowHeight);
         SDL_Surface* resSurf = TTF_RenderText_Solid(font, resText, 0, SDL_Color{200,200,200,255});
@@ -996,7 +1149,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
             SDL_DestroyTexture(resTex);
             SDL_DestroySurface(resSurf);
         }
-
         char scaleText[128];
         snprintf(scaleText, sizeof(scaleText), "Render Scale: %d", g_settings.renderScale);
         SDL_Surface* scaleSurf = TTF_RenderText_Solid(font, scaleText, 0, SDL_Color{200,200,200,255});
@@ -1007,7 +1159,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
             SDL_DestroyTexture(scaleTex);
             SDL_DestroySurface(scaleSurf);
         }
-
         char soundText[128];
         snprintf(soundText, sizeof(soundText), "Sound: %s", soundEnabled ? "ON" : "OFF");
         SDL_Surface* soundSurf = TTF_RenderText_Solid(font, soundText, 0, SDL_Color{200,200,200,255});
@@ -1018,7 +1169,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
             SDL_DestroyTexture(soundTex);
             SDL_DestroySurface(soundSurf);
         }
-
         for (auto* btn : {&upBtn, &downBtn, &scaleLeftBtn, &scaleRightBtn, &soundBtn, &okBtn, &cancelBtn}) {
             SDL_Color btnColor = btn->hover ? SDL_Color{150,150,150,255} : SDL_Color{100,100,100,255};
             SDL_SetRenderDrawColor(renderer, btnColor.r, btnColor.g, btnColor.b, 255);
@@ -1036,13 +1186,13 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
                 SDL_DestroySurface(btnSurf);
             }
         }
-
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
 }
 
 int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight, SDL_Window* window) {
+    playSound(g_soundMainMenu);
     struct MenuButton {
         SDL_FRect rect;
         std::string label;
@@ -1053,11 +1203,9 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
     MenuButton achievementsBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+10), 200, 50}, "Achievements", false};
     MenuButton settingsBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+70), 200, 50}, "Settings", false};
     MenuButton exitBtn = {{(float)(windowWidth/2-100), (float)(windowHeight/2+130), 200, 50}, "Exit", false};
-
     bool menuRunning = true;
     int selected = -1;
     SDL_Event event;
-
     while (menuRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { selected = 1; menuRunning = false; }
@@ -1134,7 +1282,6 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
                    SDL_Window* window) {
     bool inPause = true;
     SDL_Event event;
-
     struct PauseButton {
         SDL_FRect rect;
         std::string label;
@@ -1155,7 +1302,6 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
         buttons.push_back({{(float)centerX, (float)(yStart+240), (float)btnW, (float)btnH}, "Quit to Menu", false, 4});
     };
     updateButtons();
-
     while (inPause) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { gameRunning = false; inPause = false; quitToMenu = true; }
@@ -1194,10 +1340,8 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
                 inPause = false;
             }
         }
-
         SDL_SetRenderDrawColor(renderer, 0,0,0,200);
         SDL_RenderClear(renderer);
-
         SDL_Surface* pauseSurf = TTF_RenderText_Solid(font, "PAUSED", 0, SDL_Color{255,255,255,255});
         if (pauseSurf) {
             SDL_Texture* pauseTex = SDL_CreateTextureFromSurface(renderer, pauseSurf);
@@ -1206,7 +1350,6 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
             SDL_DestroyTexture(pauseTex);
             SDL_DestroySurface(pauseSurf);
         }
-
         for (const auto& btn : buttons) {
             SDL_Color btnColor = btn.hover ? SDL_Color{150,150,150,255} : SDL_Color{100,100,100,255};
             SDL_SetRenderDrawColor(renderer, btnColor.r, btnColor.g, btnColor.b, 255);
@@ -1224,7 +1367,6 @@ void showPauseMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int 
                 SDL_DestroySurface(btnSurf);
             }
         }
-
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
@@ -1252,6 +1394,7 @@ bool mobCollidesWithWall(float cx, float cy, float r,
     return false;
 }
 
+// ========== ОСНОВНОЙ ИГРОВОЙ ЦИКЛ ==========
 bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Font* smallFont,
              const Texture& wallTex,
              const Texture& mobWalkingTex, const Texture& mobAttackTex, const Texture& mobDeathTex,
@@ -1448,6 +1591,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         ReloadState reloadState;
 
         while (!levelComplete && gameRunning) {
+            updateMusic();   // обновление зацикленной музыки
+
             Uint64 frameStart = SDL_GetTicks();
             Uint64 now = frameStart;
             float dt = (now - lastTime)/1000.0f;
@@ -1613,6 +1758,12 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                         lastShootTime = now;
                         shootFlashFrames = 2;
 
+                        if (currentWeapon == 0) {
+                            playSound(g_soundPistolShoot);
+                        } else {
+                            playSound(g_soundShotgunShoot);
+                        }
+
                         int ammoPrev = (currentWeapon == 0) ? pistolAmmo + pistolMag : shotgunAmmo + shotgunMag;
 
                         performShot(player.x, player.y, player.angle,
@@ -1673,6 +1824,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             if (shootFlashFrames > 0) shootFlashFrames--;
 
             if (playerHealth <= 0) {
+                playSound(g_soundLooseRound);
                 SaveData deathStats;
                 deathStats.totalMonstersKilled = totalMonstersKilled;
                 deathStats.totalAmmoSpent = totalAmmoSpent;
@@ -1715,166 +1867,175 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             int hpBeforeDamage = playerHealth;
 
             const Uint32 MOB_UPDATE_INTERVAL_MS = 100;
-for (auto& mob : mobs) {
-    auto& state = mobRenderStates[&mob];
-    if (mob.isAlive() && state.isDying) {
-        state.isDying = false;
-    }
-    if (state.attackAnimTime > 0) state.attackAnimTime -= dt;
-    if (state.rangedCooldown > 0) state.rangedCooldown -= dt;
-    state.textureCycleTimer -= dt;
-    if (state.textureCycleTimer <= 0.0f) {
-        state.textureCycleTimer = 0.15f;
-        state.useAttackTexture = !state.useAttackTexture;
-    }
-    if (!mob.isAlive()) {
-        if (!state.isDying) {
-            state.isDying = true;
-            state.deathTimer = 0.3f;
-            if (mob.type == BOSS) {
-                state.deathTimer = 1.0f;
-                bossDying = true;
-                bossDeathTimer = 1.0f;
-                totalBossesKilled++;
-                achBossKilled = true;
-                achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
-            }
-        }
-        continue;
-    }
-    if (now - mob.lastUpdateTime >= MOB_UPDATE_INTERVAL_MS) {
-        mob.lastUpdateTime = now;
-        if (mob.type == BOSS && bossPtr != nullptr) {
-            if (mob.summonCooldown > 0.0f) {
-                mob.summonCooldown -= dt;
-            }
-            if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 8) {
-                int toSpawn = std::min(2, 8 - bossPtr->summonCount);
-                if (toSpawn > 0) {
-                    mobRenderStates[bossPtr].attackAnimTime = 1.0f;
-                    std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
-                    for (Mob& newMob : summoned) {
-                        mobs.push_back(newMob);
-                        MobRenderState newState;
-                        newState.bossPtr = bossPtr;
-                        mobRenderStates[&mobs.back()] = newState;
-                        bossPtr->addSummon(toSpawn);
-                        totalMonstersEncountered += toSpawn;
-                    }
-                    mob.summonCooldown = 4.2f;
-                    std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
-                              << bossPtr->summonCount << std::endl;
+            for (auto& mob : mobs) {
+                auto& state = mobRenderStates[&mob];
+                if (mob.isAlive() && state.isDying) {
+                    state.isDying = false;
                 }
-            }
-        }
-        float dxToPlayer = player.x - mob.x;
-        float dyToPlayer = player.y - mob.y;
-        float distToPlayer = sqrtf(dxToPlayer*dxToPlayer + dyToPlayer*dyToPlayer);
-        bool canSeePlayer = isPointVisible(mob.x, mob.y, player.x, player.y, lines, vertices);
-        float mobSpeed = (mob.type == BOSS) ? 280.0f : 320.0f;
-        float stopDist = (mob.type == BOSS) ? 300.0f : 250.0f;
-        if (canSeePlayer) {
-            if (distToPlayer > stopDist + 15.0f) {
-                float nx = dxToPlayer / distToPlayer;
-                float ny = dyToPlayer / distToPlayer;
-                float step = mobSpeed * dt;
-                float newX = mob.x + nx * step;
-                float newY = mob.y + ny * step;
-                if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                    mob.x = newX;
-                if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                    mob.y = newY;
-            }
-            else if (distToPlayer < stopDist - 15.0f) {
-                float nx = -dxToPlayer / distToPlayer;
-                float ny = -dyToPlayer / distToPlayer;
-                float step = mobSpeed * dt;
-                float newX = mob.x + nx * step;
-                float newY = mob.y + ny * step;
-                if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                    mob.x = newX;
-                if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                    mob.y = newY;
-            }
-            float maxRange = (mob.type == BOSS) ? 900.0f : 700.0f;
-            float minRange = 100.0f;
-            if (distToPlayer <= maxRange && distToPlayer >= minRange && state.rangedCooldown <= 0.0f) {
-                int dmg = (mob.type == BOSS) ? 10 : 7;
-                playerHealth -= dmg;
-                playerDamageFlash = 0.1f;
-                state.rangedCooldown = (mob.type == BOSS) ? 4.0f : 3.0f;
-                state.attackAnimTime = 0.15f;
-            }
-        } else {
-            float wanderSpeed = (mob.type == BOSS) ? 140.0f : 180.0f;
-            state.wanderTimer -= dt;
-            if (state.wanderTimer <= 0.0f) {
-                state.wanderTimer = 1.0f + (rand() % 100) / 50.0f;
-                state.wanderAngle = (rand() % 360) * M_PI / 180.0f;
-            }
-            float stepX = cos(state.wanderAngle) * wanderSpeed * dt;
-            float stepY = sin(state.wanderAngle) * wanderSpeed * dt;
-            float newX = mob.x + stepX;
-            float newY = mob.y + stepY;
-            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                mob.x = newX;
-            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                mob.y = newY;
-        }
-    }
-    mob.tryAttack(player, dt, playerHealth);
-    if (playerHealth <= 0) {
-        SaveData deathStats;
-        deathStats.totalMonstersKilled = totalMonstersKilled;
-        deathStats.totalAmmoSpent = totalAmmoSpent;
-        deathStats.totalDamageTaken = totalDamageTaken;
-        deathStats.totalShotsFired = totalShotsFired;
-        deathStats.totalBossesKilled = totalBossesKilled;
-        deathStats.totalMedkitsPicked = totalMedkitsPicked;
-        deathStats.totalAmmoPicked = totalAmmoPicked;
-        deathStats.totalMonstersEncountered = totalMonstersEncountered;
-        deathStats.totalLevelsCompleted = totalLevelsCompleted;
-        showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
-        return false;
-    }
-}
+                if (state.attackAnimTime > 0) state.attackAnimTime -= dt;
+                if (state.rangedCooldown > 0) state.rangedCooldown -= dt;
+                state.textureCycleTimer -= dt;
+                if (state.textureCycleTimer <= 0.0f) {
+                    state.textureCycleTimer = 0.15f;
+                    state.useAttackTexture = !state.useAttackTexture;
+                }
+                if (!mob.isAlive()) {
+                    if (!state.isDying) {
+                        state.isDying = true;
+                        state.deathTimer = 0.3f;
+                        if (mob.type == BOSS) {
+                            playSound(g_soundBossDead);
+                            state.deathTimer = 1.0f;
+                            bossDying = true;
+                            bossDeathTimer = 1.0f;
+                            totalBossesKilled++;
+                            achBossKilled = true;
+                            achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
+                        } else {
+                            playSound(g_soundNpcDead);
+                        }
+                    }
+                    continue;
+                }
+                if (now - mob.lastUpdateTime >= MOB_UPDATE_INTERVAL_MS) {
+                    mob.lastUpdateTime = now;
+                    if (mob.type == BOSS && bossPtr != nullptr) {
+                        if (mob.summonCooldown > 0.0f) {
+                            mob.summonCooldown -= dt;
+                        }
+                        if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 8) {
+                            int toSpawn = std::min(2, 8 - bossPtr->summonCount);
+                            if (toSpawn > 0) {
+                                mobRenderStates[bossPtr].attackAnimTime = 1.0f;
+                                std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
+                                for (Mob& newMob : summoned) {
+                                    mobs.push_back(newMob);
+                                    MobRenderState newState;
+                                    newState.bossPtr = bossPtr;
+                                    mobRenderStates[&mobs.back()] = newState;
+                                    bossPtr->addSummon(toSpawn);
+                                    totalMonstersEncountered += toSpawn;
+                                }
+                                mob.summonCooldown = 4.2f;
+                                std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
+                                          << bossPtr->summonCount << std::endl;
+                            }
+                        }
+                    }
+                    float dxToPlayer = player.x - mob.x;
+                    float dyToPlayer = player.y - mob.y;
+                    float distToPlayer = sqrtf(dxToPlayer*dxToPlayer + dyToPlayer*dyToPlayer);
+                    bool canSeePlayer = isPointVisible(mob.x, mob.y, player.x, player.y, lines, vertices);
+                    float mobSpeed = (mob.type == BOSS) ? 280.0f : 320.0f;
+                    float stopDist = (mob.type == BOSS) ? 300.0f : 250.0f;
+                    if (canSeePlayer) {
+                        if (distToPlayer > stopDist + 15.0f) {
+                            float nx = dxToPlayer / distToPlayer;
+                            float ny = dyToPlayer / distToPlayer;
+                            float step = mobSpeed * dt;
+                            float newX = mob.x + nx * step;
+                            float newY = mob.y + ny * step;
+                            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                                mob.x = newX;
+                            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                                mob.y = newY;
+                        }
+                        else if (distToPlayer < stopDist - 15.0f) {
+                            float nx = -dxToPlayer / distToPlayer;
+                            float ny = -dyToPlayer / distToPlayer;
+                            float step = mobSpeed * dt;
+                            float newX = mob.x + nx * step;
+                            float newY = mob.y + ny * step;
+                            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                                mob.x = newX;
+                            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                                mob.y = newY;
+                        }
+                        float maxRange = (mob.type == BOSS) ? 900.0f : 700.0f;
+                        float minRange = 100.0f;
+                        if (distToPlayer <= maxRange && distToPlayer >= minRange && state.rangedCooldown <= 0.0f) {
+                            int dmg = (mob.type == BOSS) ? 10 : 7;
+                            playerHealth -= dmg;
+                            playerDamageFlash = 0.1f;
+                            state.rangedCooldown = (mob.type == BOSS) ? 4.0f : 3.0f;
+                            state.attackAnimTime = 0.15f;
 
-int hpLostThisFrame = hpBeforeDamage - playerHealth;
-if (hpLostThisFrame > 0) totalDamageTaken += hpLostThisFrame;
-
-for (auto it = mobs.begin(); it != mobs.end(); ) {
-    Mob* mobPtr = &(*it);
-    auto stateIt = mobRenderStates.find(mobPtr);
-    if (stateIt != mobRenderStates.end() && !it->isAlive() && stateIt->second.isDying) {
-        stateIt->second.deathTimer -= dt;
-        if (stateIt->second.deathTimer <= 0.0f) {
-            totalMonstersKilled++;
-            if (totalMonstersKilled >= 50) achKill50 = true;
-            if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
-                stateIt->second.bossPtr->removeSummon();
-            }
-            if (it->type == BOSS) {
-                // Удаляем всех мобов, привязанных к этому боссу
-                for (auto itMob = mobs.begin(); itMob != mobs.end(); ) {
-                    auto stateMob = mobRenderStates.find(&(*itMob));
-                    if (stateMob != mobRenderStates.end() && stateMob->second.bossPtr == mobPtr) {
-                        mobRenderStates.erase(stateMob);
-                        itMob = mobs.erase(itMob);
+                            if (mob.type == BOSS) {
+                                playSound(g_soundBossShoot);
+                            } else {
+                                playSound(g_soundNpcShoot);
+                            }
+                        }
                     } else {
-                        ++itMob;
+                        float wanderSpeed = (mob.type == BOSS) ? 140.0f : 180.0f;
+                        state.wanderTimer -= dt;
+                        if (state.wanderTimer <= 0.0f) {
+                            state.wanderTimer = 1.0f + (rand() % 100) / 50.0f;
+                            state.wanderAngle = (rand() % 360) * M_PI / 180.0f;
+                        }
+                        float stepX = cos(state.wanderAngle) * wanderSpeed * dt;
+                        float stepY = sin(state.wanderAngle) * wanderSpeed * dt;
+                        float newX = mob.x + stepX;
+                        float newY = mob.y + stepY;
+                        if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                            mob.x = newX;
+                        if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                            mob.y = newY;
                     }
                 }
-                for(auto& pair : mobRenderStates) pair.second.bossPtr = nullptr;
+                mob.tryAttack(player, dt, playerHealth);
+                if (playerHealth <= 0) {
+                    playSound(g_soundLooseRound);
+                    SaveData deathStats;
+                    deathStats.totalMonstersKilled = totalMonstersKilled;
+                    deathStats.totalAmmoSpent = totalAmmoSpent;
+                    deathStats.totalDamageTaken = totalDamageTaken;
+                    deathStats.totalShotsFired = totalShotsFired;
+                    deathStats.totalBossesKilled = totalBossesKilled;
+                    deathStats.totalMedkitsPicked = totalMedkitsPicked;
+                    deathStats.totalAmmoPicked = totalAmmoPicked;
+                    deathStats.totalMonstersEncountered = totalMonstersEncountered;
+                    deathStats.totalLevelsCompleted = totalLevelsCompleted;
+                    showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
+                    return false;
+                }
             }
-            mobRenderStates.erase(stateIt);
-            it = mobs.erase(it);
-        } else {
-            ++it;
-        }
-    } else {
-        ++it;
-    }
-}
+
+            int hpLostThisFrame = hpBeforeDamage - playerHealth;
+            if (hpLostThisFrame > 0) totalDamageTaken += hpLostThisFrame;
+
+            for (auto it = mobs.begin(); it != mobs.end(); ) {
+                Mob* mobPtr = &(*it);
+                auto stateIt = mobRenderStates.find(mobPtr);
+                if (stateIt != mobRenderStates.end() && !it->isAlive() && stateIt->second.isDying) {
+                    stateIt->second.deathTimer -= dt;
+                    if (stateIt->second.deathTimer <= 0.0f) {
+                        totalMonstersKilled++;
+                        if (totalMonstersKilled >= 50) achKill50 = true;
+                        if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
+                            stateIt->second.bossPtr->removeSummon();
+                        }
+                        if (it->type == BOSS) {
+                            for (auto itMob = mobs.begin(); itMob != mobs.end(); ) {
+                                auto stateMob = mobRenderStates.find(&(*itMob));
+                                if (stateMob != mobRenderStates.end() && stateMob->second.bossPtr == mobPtr) {
+                                    mobRenderStates.erase(stateMob);
+                                    itMob = mobs.erase(itMob);
+                                } else {
+                                    ++itMob;
+                                }
+                            }
+                            for(auto& pair : mobRenderStates) pair.second.bossPtr = nullptr;
+                        }
+                        mobRenderStates.erase(stateIt);
+                        it = mobs.erase(it);
+                    } else {
+                        ++it;
+                    }
+                } else {
+                    ++it;
+                }
+            }
 
             if (mobs.empty() && !bossDying && !levelCompletedTriggered) {
                 if (initialMobCount > 0 || keys[SDL_SCANCODE_RETURN]) {
@@ -1898,6 +2059,7 @@ for (auto it = mobs.begin(); it != mobs.end(); ) {
             if (bossDying && bossDeathTimer > 0) {
                 bossDeathTimer -= dt;
                 if (bossDeathTimer <= 0.0f) {
+                    playSound(g_soundEndGame);
                     SaveData victoryStats;
                     victoryStats.totalMonstersKilled = totalMonstersKilled;
                     victoryStats.totalAmmoSpent = totalAmmoSpent;
@@ -1914,10 +2076,12 @@ for (auto it = mobs.begin(); it != mobs.end(); ) {
             }
 
             if (levelComplete && currentLevel < 3 && !bossDying && !quitGame) {
+                playSound(g_soundEndRound);
                 bool next = showLevelCompleteScreen(renderer, font, g_settings.windowWidth, g_settings.windowHeight, currentLevel);
                 if (!next) return true;
                 break;
             } else if (levelComplete && currentLevel == 3 && !bossDying && !quitGame) {
+                playSound(g_soundEndGame);
                 SaveData victoryStats;
                 victoryStats.totalMonstersKilled = totalMonstersKilled;
                 victoryStats.totalAmmoSpent = totalAmmoSpent;
@@ -2067,9 +2231,9 @@ for (auto it = mobs.begin(); it != mobs.end(); ) {
 
                 if (mobTex && mobTex->texture) {
                     SDL_FRect srcRect = {0, 0, (float)mobTex->width, (float)mobTex->height};
-                    float scale = (isAttackingNow && mob.type == BOSS) ? 1.5f : 1.0f;  // Добавь эту строку
+                    float scale = (isAttackingNow && mob.type == BOSS) ? 1.5f : 1.0f;
                     SDL_FRect dstRect = {screenX - (screenWidthMob * scale)/2, topY - (screenHeight * scale - screenHeight)/2,
-                                         screenWidthMob * scale, screenHeight * scale};  // Измененный размер
+                                         screenWidthMob * scale, screenHeight * scale};
                     SDL_RenderTexture(renderer, mobTex->texture, &srcRect, &dstRect);
                 }
             }
@@ -2281,6 +2445,15 @@ int main() {
         return 1;
     }
 
+    // Инициализация аудио
+    if (!initAudio()) {
+        std::cerr << "Audio initialization failed - continuing without sound" << std::endl;
+    } else {
+        loadAllSounds();
+        // Загрузка фоновой музыки (раскомментировано)
+        loadMusic("sounds/music.wav");
+    }
+
     SDL_Window* window = SDL_CreateWindow("UNDOOM", g_settings.windowWidth, g_settings.windowHeight,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) {
@@ -2370,6 +2543,8 @@ int main() {
     if (smallFont && smallFont != font) TTF_CloseFont(smallFont);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+
+    cleanupSounds();
     TTF_Quit();
     SDL_Quit();
     return 0;
