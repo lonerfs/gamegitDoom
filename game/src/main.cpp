@@ -68,7 +68,7 @@ struct SoundEffect {
 };
 
 static SDL_AudioDeviceID g_audioDevice = 0;
-static std::vector<SDL_AudioStream*> g_activeStreams; // для отслеживания активных стримов
+static std::vector<SDL_AudioStream*> g_activeStreams;
 
 static SoundEffect g_soundBossDead;
 static SoundEffect g_soundBossShoot;
@@ -140,7 +140,6 @@ void playSound(const SoundEffect& sound) {
     g_activeStreams.push_back(stream);
 }
 
-// Функция для остановки всех звуков (например, музыки меню)
 void stopAllSounds() {
     for (auto* stream : g_activeStreams) {
         if (stream) {
@@ -1174,7 +1173,6 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
     int selected = -1;
     SDL_Event event;
 
-    // Останавливаем все предыдущие звуки и проигрываем музыку меню
     stopAllSounds();
     playSound(g_soundMainMenu);
 
@@ -1377,7 +1375,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
              const Texture& pistolCartridgesTex, const Texture& shotgunCartridgesTex,
              int startLevel, bool isContinue) {
 
-    // Останавливаем все звуки меню перед началом игры
     stopAllSounds();
 
     const int MAX_PISTOL_AMMO = 60;
@@ -1419,7 +1416,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     }
 
     while (currentLevel <= 3) {
-        // Проигрываем звук раунда в начале уровня
         playSound(g_soundRoundSound);
 
         std::string levelFile = "level" + std::to_string(currentLevel) + ".txt";
@@ -1847,144 +1843,161 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             int hpBeforeDamage = playerHealth;
 
             const Uint32 MOB_UPDATE_INTERVAL_MS = 100;
-            for (auto& mob : mobs) {
-                auto& state = mobRenderStates[&mob];
-                if (mob.isAlive() && state.isDying) {
-                    state.isDying = false;
-                }
-                if (state.attackAnimTime > 0) state.attackAnimTime -= dt;
-                if (state.rangedCooldown > 0) state.rangedCooldown -= dt;
-                state.textureCycleTimer -= dt;
-                if (state.textureCycleTimer <= 0.0f) {
-                    state.textureCycleTimer = 0.15f;
-                    state.useAttackTexture = !state.useAttackTexture;
-                }
-                if (!mob.isAlive()) {
-                    if (!state.isDying) {
-                        state.isDying = true;
-                        state.deathTimer = 0.3f;
-                        if (mob.type == BOSS) {
-                            playSound(g_soundBossDead);
-                            state.deathTimer = 1.0f;
-                            bossDying = true;
-                            bossDeathTimer = 1.0f;
-                            totalBossesKilled++;
-                            achBossKilled = true;
-                            achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
-                        } else {
-                            playSound(g_soundNpcDead);
-                        }
-                    }
-                    continue;
-                }
-                if (now - mob.lastUpdateTime >= MOB_UPDATE_INTERVAL_MS) {
-                    mob.lastUpdateTime = now;
-                    if (mob.type == BOSS && bossPtr != nullptr) {
-                        if (mob.summonCooldown > 0.0f) {
-                            mob.summonCooldown -= dt;
-                        }
-                        if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 8) {
-                            int toSpawn = std::min(2, 8 - bossPtr->summonCount);
-                            if (toSpawn > 0) {
-                                mobRenderStates[bossPtr].attackAnimTime = 1.0f;
-                                std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
-                                for (Mob& newMob : summoned) {
-                                    mobs.push_back(newMob);
-                                    MobRenderState newState;
-                                    newState.bossPtr = bossPtr;
-                                    mobRenderStates[&mobs.back()] = newState;
-                                    bossPtr->addSummon(toSpawn);
-                                    totalMonstersEncountered += toSpawn;
-                                }
-                                mob.summonCooldown = 4.2f;
-                                std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
-                                          << bossPtr->summonCount << std::endl;
-                            }
-                        }
-                    }
-                    float dxToPlayer = player.x - mob.x;
-                    float dyToPlayer = player.y - mob.y;
-                    float distToPlayer = sqrtf(dxToPlayer*dxToPlayer + dyToPlayer*dyToPlayer);
-                    bool canSeePlayer = isPointVisible(mob.x, mob.y, player.x, player.y, lines, vertices);
-                    float mobSpeed = (mob.type == BOSS) ? 280.0f : 320.0f;
-                    float stopDist = (mob.type == BOSS) ? 300.0f : 250.0f;
-                    if (canSeePlayer) {
-                        if (distToPlayer > stopDist + 15.0f) {
-                            float nx = dxToPlayer / distToPlayer;
-                            float ny = dyToPlayer / distToPlayer;
-                            float step = mobSpeed * dt;
-                            float newX = mob.x + nx * step;
-                            float newY = mob.y + ny * step;
-                            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                                mob.x = newX;
-                            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                                mob.y = newY;
-                        }
-                        else if (distToPlayer < stopDist - 15.0f) {
-                            float nx = -dxToPlayer / distToPlayer;
-                            float ny = -dyToPlayer / distToPlayer;
-                            float step = mobSpeed * dt;
-                            float newX = mob.x + nx * step;
-                            float newY = mob.y + ny * step;
-                            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                                mob.x = newX;
-                            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                                mob.y = newY;
-                        }
-                        float maxRange = (mob.type == BOSS) ? 900.0f : 700.0f;
-                        float minRange = 100.0f;
-                        if (distToPlayer <= maxRange && distToPlayer >= minRange && state.rangedCooldown <= 0.0f) {
-                            int dmg = (mob.type == BOSS) ? 10 : 7;
-                            playerHealth -= dmg;
-                            playerDamageFlash = 0.1f;
-                            state.rangedCooldown = (mob.type == BOSS) ? 4.0f : 3.0f;
-                            state.attackAnimTime = 0.15f;
 
-                            if (mob.type == BOSS) {
-                                playSound(g_soundBossShoot);
-                            } else {
-                                playSound(g_soundNpcShoot);
-                            }
-                        }
-                    } else {
-                        float wanderSpeed = (mob.type == BOSS) ? 140.0f : 180.0f;
-                        state.wanderTimer -= dt;
-                        if (state.wanderTimer <= 0.0f) {
-                            state.wanderTimer = 1.0f + (rand() % 100) / 50.0f;
-                            state.wanderAngle = (rand() % 360) * M_PI / 180.0f;
-                        }
-                        float stepX = cos(state.wanderAngle) * wanderSpeed * dt;
-                        float stepY = sin(state.wanderAngle) * wanderSpeed * dt;
-                        float newX = mob.x + stepX;
-                        float newY = mob.y + stepY;
-                        if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
-                            mob.x = newX;
-                        if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
-                            mob.y = newY;
+            // ==============================================================
+            // ИСПРАВЛЕННЫЙ ЦИКЛ ОБНОВЛЕНИЯ МОБОВ С УДАЛЕНИЕМ ПОСЛЕ СМЕРТИ
+            // ==============================================================
+            for (auto it = mobs.begin(); it != mobs.end(); ) {
+                Mob& mob = *it;
+                auto& state = mobRenderStates[&mob];
+
+                // Если моб умирает, обновляем таймер и возможно удаляем
+                if (state.isDying) {
+                    state.deathTimer -= dt;
+                    if (state.deathTimer <= 0.0f) {
+                        it = mobs.erase(it);
+                        mobRenderStates.erase(&mob);
+                        continue;
                     }
                 }
-                mob.tryAttack(player, dt, playerHealth);
-                if (playerHealth <= 0) {
-                    playSound(g_soundLooseRound);
-                    SaveData deathStats;
-                    deathStats.totalMonstersKilled = totalMonstersKilled;
-                    deathStats.totalAmmoSpent = totalAmmoSpent;
-                    deathStats.totalDamageTaken = totalDamageTaken;
-                    deathStats.totalShotsFired = totalShotsFired;
-                    deathStats.totalBossesKilled = totalBossesKilled;
-                    deathStats.totalMedkitsPicked = totalMedkitsPicked;
-                    deathStats.totalAmmoPicked = totalAmmoPicked;
-                    deathStats.totalMonstersEncountered = totalMonstersEncountered;
-                    deathStats.totalLevelsCompleted = totalLevelsCompleted;
-                    showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
-                    return false;
+                // Если моб жив – обновляем поведение
+                else if (mob.isAlive()) {
+                    // Таймер анимации атаки
+                    if (state.attackAnimTime > 0) state.attackAnimTime -= dt;
+                    if (state.rangedCooldown > 0) state.rangedCooldown -= dt;
+                    state.textureCycleTimer -= dt;
+                    if (state.textureCycleTimer <= 0.0f) {
+                        state.textureCycleTimer = 0.15f;
+                        state.useAttackTexture = !state.useAttackTexture;
+                    }
+
+                    // Обновление логики моба с заданной частотой
+                    if (now - mob.lastUpdateTime >= MOB_UPDATE_INTERVAL_MS) {
+                        mob.lastUpdateTime = now;
+                        if (mob.type == BOSS && bossPtr != nullptr) {
+                            if (mob.summonCooldown > 0.0f) {
+                                mob.summonCooldown -= dt;
+                            }
+                            if (mob.summonCooldown <= 0.0f && bossPtr->summonCount < 8) {
+                                int toSpawn = std::min(2, 8 - bossPtr->summonCount);
+                                if (toSpawn > 0) {
+                                    mobRenderStates[bossPtr].attackAnimTime = 1.0f;
+                                    std::vector<Mob> summoned = mob.summonMobsAround(toSpawn);
+                                    for (Mob& newMob : summoned) {
+                                        mobs.push_back(newMob);
+                                        MobRenderState newState;
+                                        newState.bossPtr = bossPtr;
+                                        mobRenderStates[&mobs.back()] = newState;
+                                        bossPtr->addSummon(toSpawn);
+                                        totalMonstersEncountered += toSpawn;
+                                    }
+                                    mob.summonCooldown = 4.2f;
+                                    std::cout << "Boss summoned " << toSpawn << " minions! Total alive: "
+                                              << bossPtr->summonCount << std::endl;
+                                }
+                            }
+                        }
+                        float dxToPlayer = player.x - mob.x;
+                        float dyToPlayer = player.y - mob.y;
+                        float distToPlayer = sqrtf(dxToPlayer*dxToPlayer + dyToPlayer*dyToPlayer);
+                        bool canSeePlayer = isPointVisible(mob.x, mob.y, player.x, player.y, lines, vertices);
+                        float mobSpeed = (mob.type == BOSS) ? 280.0f : 320.0f;
+                        float stopDist = (mob.type == BOSS) ? 300.0f : 250.0f;
+                        if (canSeePlayer) {
+                            if (distToPlayer > stopDist + 15.0f) {
+                                float nx = dxToPlayer / distToPlayer;
+                                float ny = dyToPlayer / distToPlayer;
+                                float step = mobSpeed * dt;
+                                float newX = mob.x + nx * step;
+                                float newY = mob.y + ny * step;
+                                if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                                    mob.x = newX;
+                                if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                                    mob.y = newY;
+                            }
+                            else if (distToPlayer < stopDist - 15.0f) {
+                                float nx = -dxToPlayer / distToPlayer;
+                                float ny = -dyToPlayer / distToPlayer;
+                                float step = mobSpeed * dt;
+                                float newX = mob.x + nx * step;
+                                float newY = mob.y + ny * step;
+                                if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                                    mob.x = newX;
+                                if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                                    mob.y = newY;
+                            }
+                            float maxRange = (mob.type == BOSS) ? 900.0f : 700.0f;
+                            float minRange = 100.0f;
+                            if (distToPlayer <= maxRange && distToPlayer >= minRange && state.rangedCooldown <= 0.0f) {
+                                int dmg = (mob.type == BOSS) ? 10 : 7;
+                                playerHealth -= dmg;
+                                playerDamageFlash = 0.1f;
+                                state.rangedCooldown = (mob.type == BOSS) ? 4.0f : 3.0f;
+                                state.attackAnimTime = 0.15f;
+
+                                if (mob.type == BOSS) {
+                                    playSound(g_soundBossShoot);
+                                } else {
+                                    playSound(g_soundNpcShoot);
+                                }
+                            }
+                        } else {
+                            float wanderSpeed = (mob.type == BOSS) ? 140.0f : 180.0f;
+                            state.wanderTimer -= dt;
+                            if (state.wanderTimer <= 0.0f) {
+                                state.wanderTimer = 1.0f + (rand() % 100) / 50.0f;
+                                state.wanderAngle = (rand() % 360) * M_PI / 180.0f;
+                            }
+                            float stepX = cos(state.wanderAngle) * wanderSpeed * dt;
+                            float stepY = sin(state.wanderAngle) * wanderSpeed * dt;
+                            float newX = mob.x + stepX;
+                            float newY = mob.y + stepY;
+                            if (!mobCollidesWithWall(newX, mob.y, mob.size/2, lines, vertices))
+                                mob.x = newX;
+                            if (!mobCollidesWithWall(mob.x, newY, mob.size/2, lines, vertices))
+                                mob.y = newY;
+                        }
+                    }
+                    mob.tryAttack(player, dt, playerHealth);
+                    if (playerHealth <= 0) {
+                        playSound(g_soundLooseRound);
+                        SaveData deathStats;
+                        deathStats.totalMonstersKilled = totalMonstersKilled;
+                        deathStats.totalAmmoSpent = totalAmmoSpent;
+                        deathStats.totalDamageTaken = totalDamageTaken;
+                        deathStats.totalShotsFired = totalShotsFired;
+                        deathStats.totalBossesKilled = totalBossesKilled;
+                        deathStats.totalMedkitsPicked = totalMedkitsPicked;
+                        deathStats.totalAmmoPicked = totalAmmoPicked;
+                        deathStats.totalMonstersEncountered = totalMonstersEncountered;
+                        deathStats.totalLevelsCompleted = totalLevelsCompleted;
+                        showDeathStatsScreen(renderer, font, smallFont, g_settings.windowWidth, g_settings.windowHeight, deathStats);
+                        return false;
+                    }
+                } else {
+                    // Моб только что умер, запускаем анимацию смерти
+                    state.isDying = true;
+                    state.deathTimer = (mob.type == BOSS) ? 1.0f : 0.3f;
+                    if (mob.type == BOSS) {
+                        playSound(g_soundBossDead);
+                        bossDying = true;
+                        bossDeathTimer = 1.0f;
+                        totalBossesKilled++;
+                        achBossKilled = true;
+                        achievements.push_back({"KILLED BOSS", 3.0f, 3.0f});
+                    } else {
+                        playSound(g_soundNpcDead);
+                    }
                 }
+
+                ++it;
             }
+            // ==============================================================
 
             int hpLostThisFrame = hpBeforeDamage - playerHealth;
             if (hpLostThisFrame > 0) totalDamageTaken += hpLostThisFrame;
 
-            // Проверяем, все ли мобы мертвы
+            // Проверка, все ли мобы мертвы
             bool allMobsDead = true;
             for (const auto& mob : mobs) {
                 if (mob.isAlive()) {
@@ -1993,7 +2006,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 }
             }
 
-            // Если все мобы мертвы и ещё не завершили уровень
             if (allMobsDead && !bossDying && !levelCompletedTriggered && mobs.empty()) {
                 if (initialMobCount > 0 || keys[SDL_SCANCODE_RETURN]) {
                     levelCompletedTriggered = true;
@@ -2069,6 +2081,7 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                 else ++it;
             }
 
+            // Отрисовка (без изменений)
             SDL_SetRenderDrawColor(renderer, 0,0,0,255);
             SDL_RenderClear(renderer);
             SDL_SetRenderDrawColor(renderer, 26, 20, 16, 255);
@@ -2411,7 +2424,6 @@ int main() {
         return 1;
     }
 
-    // Инициализация аудио
     if (!initAudio()) {
         std::cerr << "Audio initialization failed - continuing without sound" << std::endl;
     } else {
