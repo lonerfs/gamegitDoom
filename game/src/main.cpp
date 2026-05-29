@@ -68,10 +68,7 @@ struct SoundEffect {
 };
 
 static SDL_AudioDeviceID g_audioDevice = 0;
-static SDL_AudioStream* g_musicStream = nullptr;
-static Uint8* g_musicData = nullptr;
-static Uint32 g_musicLen = 0;
-static SDL_AudioSpec g_musicSpec;
+static std::vector<SDL_AudioStream*> g_activeStreams; // для отслеживания активных стримов
 
 static SoundEffect g_soundBossDead;
 static SoundEffect g_soundBossShoot;
@@ -140,53 +137,22 @@ void playSound(const SoundEffect& sound) {
         return;
     }
     SDL_SetAudioStreamGain(stream, 1.0f);
+    g_activeStreams.push_back(stream);
 }
 
-bool loadMusic(const char* filename) {
-    if (!SDL_LoadWAV(filename, &g_musicSpec, &g_musicData, &g_musicLen)) {
-        std::cerr << "Failed to load music: " << SDL_GetError() << std::endl;
-        return false;
+// Функция для остановки всех звуков (например, музыки меню)
+void stopAllSounds() {
+    for (auto* stream : g_activeStreams) {
+        if (stream) {
+            SDL_ClearAudioStream(stream);
+            SDL_DestroyAudioStream(stream);
+        }
     }
-    g_musicStream = SDL_CreateAudioStream(&g_musicSpec, nullptr);
-    if (!g_musicStream) {
-        std::cerr << "CreateAudioStream for music failed: " << SDL_GetError() << std::endl;
-        SDL_free(g_musicData);
-        g_musicData = nullptr;
-        return false;
-    }
-    if (!SDL_BindAudioStream(g_audioDevice, g_musicStream)) {
-        std::cerr << "BindAudioStream for music failed: " << SDL_GetError() << std::endl;
-        SDL_DestroyAudioStream(g_musicStream);
-        SDL_free(g_musicData);
-        g_musicStream = nullptr;
-        g_musicData = nullptr;
-        return false;
-    }
-    SDL_PutAudioStreamData(g_musicStream, g_musicData, g_musicLen);
-    return true;
-}
-
-void updateMusic() {
-    if (!g_musicStream || !g_musicData) return;
-    if (SDL_GetAudioStreamQueued(g_musicStream) < (int)g_musicLen / 2) {
-        SDL_PutAudioStreamData(g_musicStream, g_musicData, g_musicLen);
-    }
-}
-
-void stopMusic() {
-    if (g_musicStream) {
-        SDL_ClearAudioStream(g_musicStream);
-        SDL_DestroyAudioStream(g_musicStream);
-        g_musicStream = nullptr;
-    }
-    if (g_musicData) {
-        SDL_free(g_musicData);
-        g_musicData = nullptr;
-    }
+    g_activeStreams.clear();
 }
 
 void cleanupSounds() {
-    stopMusic();
+    stopAllSounds();
     auto freeSound = [](SoundEffect& s) {
         if (s.data) {
             SDL_free(s.data);
@@ -859,6 +825,7 @@ void showAchievementsScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* sm
 }
 
 bool showGameOverScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight) {
+    playSound(g_soundLooseRound);
     bool waiting = true;
     bool restart = false;
     SDL_Event event;
@@ -971,6 +938,7 @@ bool showVictoryScreen(SDL_Renderer* renderer, TTF_Font* font, TTF_Font* smallFo
 }
 
 bool showLevelCompleteScreen(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight, int currentLevel) {
+    playSound(g_soundEndRound);
     bool waiting = true;
     bool next = false;
     SDL_Event event;
@@ -1192,7 +1160,6 @@ void showSettingsMenu(SDL_Renderer* renderer, TTF_Font* font, int& windowWidth, 
 }
 
 int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int windowHeight, SDL_Window* window) {
-    playSound(g_soundMainMenu);
     struct MenuButton {
         SDL_FRect rect;
         std::string label;
@@ -1206,6 +1173,11 @@ int showMainMenu(SDL_Renderer* renderer, TTF_Font* font, int windowWidth, int wi
     bool menuRunning = true;
     int selected = -1;
     SDL_Event event;
+
+    // Останавливаем все предыдущие звуки и проигрываем музыку меню
+    stopAllSounds();
+    playSound(g_soundMainMenu);
+
     while (menuRunning) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) { selected = 1; menuRunning = false; }
@@ -1405,6 +1377,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
              const Texture& pistolCartridgesTex, const Texture& shotgunCartridgesTex,
              int startLevel, bool isContinue) {
 
+    // Останавливаем все звуки меню перед началом игры
+    stopAllSounds();
+
     const int MAX_PISTOL_AMMO = 60;
     const int MAX_SHOTGUN_AMMO = 20;
     const int PISTOL_MAG_SIZE = 7;
@@ -1444,6 +1419,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
     }
 
     while (currentLevel <= 3) {
+        // Проигрываем звук раунда в начале уровня
+        playSound(g_soundRoundSound);
+
         std::string levelFile = "level" + std::to_string(currentLevel) + ".txt";
         DoomMap gameMap;
         if (!gameMap.loadFromTextFile(levelFile)) {
@@ -1591,8 +1569,6 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
         ReloadState reloadState;
 
         while (!levelComplete && gameRunning) {
-            updateMusic();   // обновление зацикленной музыки
-
             Uint64 frameStart = SDL_GetTicks();
             Uint64 now = frameStart;
             float dt = (now - lastTime)/1000.0f;
@@ -1754,7 +1730,8 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
                     }
                 }
                 if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_SPACE) {
-                    if (!reloadState.inProgress && (now - lastShootTime >= SHOOT_DELAY_MS)) {
+                    int ammoInMag = (currentWeapon == 0) ? pistolMag : shotgunMag;
+                    if (!reloadState.inProgress && ammoInMag > 0 && (now - lastShootTime >= SHOOT_DELAY_MS)) {
                         lastShootTime = now;
                         shootFlashFrames = 2;
 
@@ -1774,6 +1751,9 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
 
                         int ammoNow = (currentWeapon == 0) ? pistolAmmo + pistolMag : shotgunAmmo + shotgunMag;
                         totalAmmoSpent += (ammoPrev - ammoNow);
+                    } else if (ammoInMag == 0 && !reloadState.inProgress) {
+                        float reloadTime = (currentWeapon == 0) ? 0.5f : 1.0f;
+                        startReload(reloadState, currentWeapon, reloadTime);
                     }
                 }
             }
@@ -2004,40 +1984,17 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             int hpLostThisFrame = hpBeforeDamage - playerHealth;
             if (hpLostThisFrame > 0) totalDamageTaken += hpLostThisFrame;
 
-            for (auto it = mobs.begin(); it != mobs.end(); ) {
-                Mob* mobPtr = &(*it);
-                auto stateIt = mobRenderStates.find(mobPtr);
-                if (stateIt != mobRenderStates.end() && !it->isAlive() && stateIt->second.isDying) {
-                    stateIt->second.deathTimer -= dt;
-                    if (stateIt->second.deathTimer <= 0.0f) {
-                        totalMonstersKilled++;
-                        if (totalMonstersKilled >= 50) achKill50 = true;
-                        if (it->type == ZOMBIE && stateIt->second.bossPtr != nullptr) {
-                            stateIt->second.bossPtr->removeSummon();
-                        }
-                        if (it->type == BOSS) {
-                            for (auto itMob = mobs.begin(); itMob != mobs.end(); ) {
-                                auto stateMob = mobRenderStates.find(&(*itMob));
-                                if (stateMob != mobRenderStates.end() && stateMob->second.bossPtr == mobPtr) {
-                                    mobRenderStates.erase(stateMob);
-                                    itMob = mobs.erase(itMob);
-                                } else {
-                                    ++itMob;
-                                }
-                            }
-                            for(auto& pair : mobRenderStates) pair.second.bossPtr = nullptr;
-                        }
-                        mobRenderStates.erase(stateIt);
-                        it = mobs.erase(it);
-                    } else {
-                        ++it;
-                    }
-                } else {
-                    ++it;
+            // Проверяем, все ли мобы мертвы
+            bool allMobsDead = true;
+            for (const auto& mob : mobs) {
+                if (mob.isAlive()) {
+                    allMobsDead = false;
+                    break;
                 }
             }
 
-            if (mobs.empty() && !bossDying && !levelCompletedTriggered) {
+            // Если все мобы мертвы и ещё не завершили уровень
+            if (allMobsDead && !bossDying && !levelCompletedTriggered && mobs.empty()) {
                 if (initialMobCount > 0 || keys[SDL_SCANCODE_RETURN]) {
                     levelCompletedTriggered = true;
                     levelCompleteDelay = 2.0f;
@@ -2259,10 +2216,19 @@ bool runGame(SDL_Renderer* renderer, SDL_Window* window, TTF_Font* font, TTF_Fon
             int weaponX = (g_settings.windowWidth - weaponW) / 2;
             int weaponY = g_settings.windowHeight - weaponH - 20;
             const Texture* currentWeaponTex = nullptr;
-            if (currentWeapon == 0)
-                currentWeaponTex = (shootFlashFrames > 0) ? &shootingGunTex : &gunTex;
-            else
-                currentWeaponTex = (shootFlashFrames > 0) ? &shotgunShotTex : &shotgunTex;
+            if (currentWeapon == 0) {
+                if (shootFlashFrames > 0) {
+                    currentWeaponTex = &shootingGunTex;
+                } else {
+                    currentWeaponTex = &gunTex;
+                }
+            } else {
+                if (shootFlashFrames > 0) {
+                    currentWeaponTex = &shotgunShotTex;
+                } else {
+                    currentWeaponTex = &shotgunTex;
+                }
+            }
             if (currentWeaponTex && currentWeaponTex->texture) {
                 SDL_FRect srcRect = {0, 0, (float)currentWeaponTex->width, (float)currentWeaponTex->height};
                 SDL_FRect dstRect = {(float)weaponX, (float)weaponY, (float)weaponW, (float)weaponH};
@@ -2450,8 +2416,6 @@ int main() {
         std::cerr << "Audio initialization failed - continuing without sound" << std::endl;
     } else {
         loadAllSounds();
-        // Загрузка фоновой музыки (раскомментировано)
-        loadMusic("sounds/music.wav");
     }
 
     SDL_Window* window = SDL_CreateWindow("UNDOOM", g_settings.windowWidth, g_settings.windowHeight,
